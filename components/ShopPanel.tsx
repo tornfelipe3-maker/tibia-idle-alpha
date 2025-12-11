@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { SHOP_ITEMS, QUESTS } from '../constants';
 import { Item, Player, NpcType, EquipmentSlot, SkillType } from '../types';
-import { Lock, PackageCheck, Coins, ShieldCheck, EyeOff, Search, LayoutGrid, Sword, Crosshair, Sparkles, Scroll, ArrowUp, Shield, Shirt, Footprints, Gem, FlaskConical, Package, HardHat, Columns } from 'lucide-react';
+import { Lock, PackageCheck, Coins, ShieldCheck, EyeOff, Search, LayoutGrid, Sword, Crosshair, Sparkles, Scroll, ArrowUp, Shield, Shirt, Footprints, Gem, FlaskConical, Package, HardHat, Columns, ChevronsUp, Layers } from 'lucide-react';
 import { ItemTooltip } from './ItemTooltip';
 
 interface ShopPanelProps {
@@ -42,6 +42,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ playerGold, playerLevel, p
   const [category, setCategory] = useState<ShopCategory>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [quantity, setQuantity] = useState<number>(1);
+  const [isMaxMode, setIsMaxMode] = useState(false); // Toggle for MAX mode
   
   const [hoverItem, setHoverItem] = useState<Item | null>(null);
   const [hoverPos, setHoverPos] = useState<{x: number, y: number} | null>(null);
@@ -81,6 +82,15 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ playerGold, playerLevel, p
         setHoverItem(null);
         setHoverPos(null);
     }
+  };
+
+  const handleQuantityChange = (val: number) => {
+      setQuantity(Math.max(1, val));
+      setIsMaxMode(false); // Disable max mode if manually changing
+  };
+
+  const toggleMaxMode = () => {
+      setIsMaxMode(!isMaxMode);
   };
 
   const isSkipped = (itemId: string) => skippedLoot.includes(itemId);
@@ -189,21 +199,52 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ playerGold, playerLevel, p
             </div>
          </div>
          
-         {/* Quantity Selector */}
-         <div className="flex items-center bg-[#111] border border-[#333] rounded p-1">
-             <span className="text-[10px] text-gray-500 font-bold px-2 uppercase">Amount:</span>
-             <button onClick={() => setQuantity(1)} className={`px-2 py-0.5 text-xs rounded ${quantity===1 ? 'bg-blue-900 text-white' : 'text-gray-400'}`}>1</button>
-             <button onClick={() => setQuantity(10)} className={`px-2 py-0.5 text-xs rounded ${quantity===10 ? 'bg-blue-900 text-white' : 'text-gray-400'}`}>10</button>
-             <button onClick={() => setQuantity(100)} className={`px-2 py-0.5 text-xs rounded ${quantity===100 ? 'bg-blue-900 text-white' : 'text-gray-400'}`}>100</button>
-             <div className="h-4 w-[1px] bg-[#333] mx-1"></div>
-             <input 
-               type="number" 
-               min="1" 
-               max="10000" 
-               value={quantity} 
-               onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-               className="bg-transparent text-white text-xs w-16 text-center outline-none font-mono"
-             />
+         {/* Quantity Selector with MAX and Slider */}
+         <div className="flex flex-col gap-1">
+             <div className="flex items-center bg-[#111] border border-[#333] rounded p-1">
+                 <span className="text-[10px] text-gray-500 font-bold px-2 uppercase">Amount:</span>
+                 <button onClick={() => handleQuantityChange(1)} className={`px-2 py-0.5 text-xs rounded ${!isMaxMode && quantity===1 ? 'bg-blue-900 text-white' : 'text-gray-400 hover:bg-[#333]'}`}>1</button>
+                 <button onClick={() => handleQuantityChange(10)} className={`px-2 py-0.5 text-xs rounded ${!isMaxMode && quantity===10 ? 'bg-blue-900 text-white' : 'text-gray-400 hover:bg-[#333]'}`}>10</button>
+                 <button onClick={() => handleQuantityChange(100)} className={`px-2 py-0.5 text-xs rounded ${!isMaxMode && quantity===100 ? 'bg-blue-900 text-white' : 'text-gray-400 hover:bg-[#333]'}`}>100</button>
+                 
+                 <div className="h-4 w-[1px] bg-[#333] mx-1"></div>
+                 
+                 {/* MAX Button */}
+                 <button 
+                    onClick={toggleMaxMode} 
+                    className={`
+                        px-2 py-0.5 text-[10px] font-bold rounded flex items-center gap-1 transition-colors
+                        ${isMaxMode ? 'bg-purple-900 text-purple-200 border border-purple-500' : 'text-gray-400 hover:bg-[#333]'}
+                    `}
+                    title="Detect max amount automatically"
+                 >
+                    <ChevronsUp size={10} /> MAX
+                 </button>
+
+                 <div className="h-4 w-[1px] bg-[#333] mx-1"></div>
+
+                 <input 
+                   type="text" 
+                   value={isMaxMode ? 'ALL' : quantity} 
+                   onChange={(e) => handleQuantityChange(parseInt(e.target.value) || 1)}
+                   className={`bg-transparent text-white text-xs w-16 text-center outline-none font-mono ${isMaxMode ? 'text-purple-400 font-bold' : ''}`}
+                   readOnly={isMaxMode}
+                 />
+             </div>
+             
+             {/* Slider for quick selection */}
+             <div className="flex items-center px-1 gap-2">
+                 <span className="text-[9px] text-gray-600"><Layers size={10}/></span>
+                 <input 
+                    type="range" 
+                    min="1" 
+                    max="100" 
+                    value={isMaxMode ? 100 : Math.min(100, quantity)} 
+                    onChange={(e) => handleQuantityChange(parseInt(e.target.value))}
+                    className="w-full h-1 bg-[#333] rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    disabled={isMaxMode}
+                 />
+             </div>
          </div>
       </div>
 
@@ -260,11 +301,29 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ playerGold, playerLevel, p
 
                     {displayedItems.map((item) => {
                     const ownedQty = getOwnedQuantity(item);
-                    const totalPrice = item.price * quantity;
-                    const totalSellPrice = item.sellPrice * quantity;
                     
-                    const canAfford = playerGold >= totalPrice;
-                    const canSell = ownedQty >= quantity;
+                    // --- LOGIC FOR QUANTITY CALCULATION ---
+                    let currentQty = quantity;
+                    
+                    // If MAX Mode is active, calculate the dynamic max for this item
+                    if (isMaxMode) {
+                        if (mode === 'buy') {
+                            currentQty = item.price > 0 ? Math.floor(playerGold / item.price) : 0;
+                            // Clamp to prevent overflow or crazy numbers, but in idle game 'all' usually means all affordable.
+                            if (currentQty === 0) currentQty = 0; 
+                        } else {
+                            currentQty = ownedQty;
+                        }
+                    }
+
+                    // Ensure we don't display 0 quantity buttons unless it's genuinely 0 available
+                    const displayQty = Math.max(1, currentQty);
+
+                    const totalPrice = item.price * currentQty;
+                    const totalSellPrice = item.sellPrice * currentQty;
+                    
+                    const canAfford = mode === 'buy' && currentQty > 0 && playerGold >= totalPrice;
+                    const canSell = mode === 'sell' && currentQty > 0 && ownedQty >= currentQty;
                     
                     return (
                         <div 
@@ -301,27 +360,28 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ playerGold, playerLevel, p
 
                         {mode === 'buy' ? (
                             <button
-                                onClick={() => onBuyItem(item, quantity)}
+                                onClick={() => onBuyItem(item, currentQty)}
                                 disabled={!canAfford}
                                 className={`
-                                    ml-3 px-3 py-1.5 tibia-btn text-[11px] font-bold min-w-[70px] flex flex-col items-end leading-none
+                                    ml-3 px-3 py-1.5 tibia-btn text-[11px] font-bold min-w-[80px] flex flex-col items-end leading-none transition-colors
                                     ${canAfford ? 'text-white' : 'text-gray-500 cursor-not-allowed'}
                                 `}
                                 >
                                     <span>{totalPrice.toLocaleString()} gp</span>
-                                    {quantity > 1 && <span className="text-[9px] opacity-60">x{quantity}</span>}
+                                    {/* Show count if > 1 OR if in Max Mode */}
+                                    {(currentQty > 1 || isMaxMode) && <span className={`text-[9px] ${isMaxMode ? 'text-purple-300 font-bold' : 'opacity-60'}`}>x{currentQty.toLocaleString()}</span>}
                             </button>
                         ) : (
                             <button
-                                onClick={() => onSellItem(item, quantity)}
+                                onClick={() => onSellItem(item, currentQty)}
                                 disabled={!canSell}
                                 className={`
-                                    ml-3 px-3 py-1.5 tibia-btn text-[11px] font-bold min-w-[70px] text-green-200 flex flex-col items-end leading-none
+                                    ml-3 px-3 py-1.5 tibia-btn text-[11px] font-bold min-w-[80px] text-green-200 flex flex-col items-end leading-none transition-colors
                                     ${canSell ? '' : 'opacity-50 cursor-not-allowed'}
                                 `}
                                 >
                                     <span>{totalSellPrice.toLocaleString()} gp</span>
-                                    {quantity > 1 && <span className="text-[9px] opacity-60">x{quantity}</span>}
+                                    {(currentQty > 1 || isMaxMode) && <span className={`text-[9px] ${isMaxMode ? 'text-purple-300 font-bold' : 'opacity-60'}`}>x{currentQty.toLocaleString()}</span>}
                             </button>
                         )}
                         </div>

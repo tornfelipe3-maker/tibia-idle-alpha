@@ -1,45 +1,71 @@
 
 import { Player, EquipmentSlot, SkillType, Vocation } from '../types';
 
-export const IMG_BASE = 'https://tibia.fandom.com/wiki/Special:Redirect/file/';
+// Use Special:FilePath for more direct access and better redirection handling
+export const IMG_BASE = 'https://tibia.fandom.com/wiki/Special:FilePath/';
 export const MAX_STAMINA = 10800; // 3 hours in seconds
 
 export const EMPTY_SLOT_IMAGES: Record<EquipmentSlot, string> = {
-  [EquipmentSlot.HEAD]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Helmet_Slot.gif',
-  [EquipmentSlot.NECK]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Necklace_Slot.gif',
-  [EquipmentSlot.BODY]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Armor_Slot.gif',
-  [EquipmentSlot.HAND_LEFT]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Hand_Slot.gif',
-  [EquipmentSlot.HAND_RIGHT]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Hand_Slot.gif',
-  [EquipmentSlot.LEGS]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Legs_Slot.gif',
-  [EquipmentSlot.FEET]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Boots_Slot.gif',
-  [EquipmentSlot.RING]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Ring_Slot.gif',
-  [EquipmentSlot.AMMO]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Ammo_Slot.gif',
+  [EquipmentSlot.HEAD]: `${IMG_BASE}Helmet_Slot.gif`,
+  [EquipmentSlot.NECK]: `${IMG_BASE}Necklace_Slot.gif`,
+  [EquipmentSlot.BODY]: `${IMG_BASE}Armor_Slot.gif`,
+  [EquipmentSlot.HAND_LEFT]: `${IMG_BASE}Hand_Slot.gif`,
+  [EquipmentSlot.HAND_RIGHT]: `${IMG_BASE}Hand_Slot.gif`,
+  [EquipmentSlot.LEGS]: `${IMG_BASE}Legs_Slot.gif`,
+  [EquipmentSlot.FEET]: `${IMG_BASE}Boots_Slot.gif`,
+  [EquipmentSlot.RING]: `${IMG_BASE}Ring_Slot.gif`,
+  [EquipmentSlot.AMMO]: `${IMG_BASE}Ammo_Slot.gif`,
 };
 
 export const VOCATION_SPRITES = {
-  [Vocation.NONE]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Knight_Addon_1_Male.gif',
-  [Vocation.KNIGHT]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Knight_Addon_1_Male.gif',
-  [Vocation.PALADIN]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Hunter_Addon_1_Male.gif',
-  [Vocation.SORCERER]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Mage_Addon_1_Male.gif',
-  [Vocation.DRUID]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Druid_Addon_1_Male.gif',
-  [Vocation.MONK]: 'https://tibia.fandom.com/wiki/Special:Redirect/file/Monk_Addon_1_Male.gif',
+  [Vocation.NONE]: `${IMG_BASE}Knight_Addon_1_Male.gif`,
+  [Vocation.KNIGHT]: `${IMG_BASE}Knight_Addon_1_Male.gif`,
+  [Vocation.PALADIN]: `${IMG_BASE}Hunter_Addon_1_Male.gif`,
+  [Vocation.SORCERER]: `${IMG_BASE}Mage_Addon_1_Male.gif`,
+  [Vocation.DRUID]: `${IMG_BASE}Druid_Addon_1_Male.gif`,
+  [Vocation.MONK]: `${IMG_BASE}Monk_Addon_1_Male.gif`,
 };
 
 export const REGEN_RATES = {
   [Vocation.NONE]: { hp: 1, mana: 1 },
-  [Vocation.KNIGHT]: { hp: 6, mana: 1 },
+  [Vocation.KNIGHT]: { hp: 6, mana: 2 }, // Knights need a bit more mana for rotation
   [Vocation.PALADIN]: { hp: 3, mana: 4 },
   [Vocation.SORCERER]: { hp: 1, mana: 8 },
   [Vocation.DRUID]: { hp: 1, mana: 8 },
   [Vocation.MONK]: { hp: 4, mana: 3 },
 };
 
+// Tibia Magic Level Multipliers
+const ML_MULTIPLIERS = {
+    [Vocation.SORCERER]: 1.1,
+    [Vocation.DRUID]: 1.1,
+    [Vocation.PALADIN]: 1.4,
+    [Vocation.KNIGHT]: 3.0,
+    [Vocation.MONK]: 1.4, // Custom for Monk
+    [Vocation.NONE]: 3.0
+};
+
 export const getXpForLevel = (level: number): number => {
   return Math.floor((50 * Math.pow(level, 3) / 3) - (100 * Math.pow(level, 2)) + (850 * level / 3) - 200);
 };
 
-export const getTicksForNextSkill = (skill: SkillType, level: number, vocation: Vocation): number => {
-  return Math.floor(50 * Math.pow(1.1, level));
+// Calculates "Points" needed for next level.
+// For Melee/Dist/Shield: Points = Hits
+// For Magic: Points = Mana Spent
+export const getPointsForNextSkill = (skill: SkillType, currentLevel: number, vocation: Vocation): number => {
+  if (skill === SkillType.MAGIC) {
+      // Formula: 1600 * (multiplier ^ currentLevel)
+      const multiplier = ML_MULTIPLIERS[vocation] || 3.0;
+      return Math.floor(1600 * Math.pow(multiplier, currentLevel));
+  }
+  
+  // Standard weapon skill formula: 50 * (1.1 ^ level) ... roughly
+  // Adjusting for game feel (Tibia is A * B^L)
+  let constant = 50;
+  let power = 1.1;
+  
+  // Simple approximation for idle game
+  return Math.floor(constant * Math.pow(power, currentLevel));
 };
 
 export const INITIAL_PLAYER_STATS: Player = {

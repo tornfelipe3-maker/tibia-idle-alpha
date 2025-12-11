@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Monster, Boss, Player, Vocation, HitSplat } from '../types';
 import { MONSTERS, BOSSES, VOCATION_SPRITES, SHOP_ITEMS } from '../constants';
 import { estimateHuntStats } from '../services';
-import { Skull, Star, Users, AlertTriangle, Search, X, Info, Zap, Octagon, Coins } from 'lucide-react';
+import { Skull, Star, Users, AlertTriangle, Search, X, Info, Zap, Octagon, Coins, Heart, Swords, Shield, Footprints, Flame, Snowflake, Droplets, Mountain } from 'lucide-react';
 
 interface HuntPanelProps {
   player: Player;
@@ -161,63 +161,78 @@ export const HuntPanel: React.FC<HuntPanelProps> = ({
           </div>
       )}
 
-      {/* Monster Info Modal (Encyclopedia) */}
+      {/* NEW IMPROVED Monster Info Modal (Bestiary Style) */}
       {infoModal && (
-        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
-            <div className="tibia-panel w-full max-w-sm shadow-2xl p-0 overflow-hidden flex flex-col max-h-[80vh]">
-                <div className="bg-[#444] border-b border-[#111] px-3 py-2 flex justify-between items-center">
-                    <span className="font-bold text-[#eee] text-sm">Bestiary: {infoModal.name}</span>
-                    <button onClick={() => setInfoModal(null)} className="text-[#aaa] hover:text-white font-bold text-sm px-2">X</button>
+        <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="tibia-panel w-full max-w-md shadow-2xl p-0 overflow-hidden flex flex-col max-h-[90vh]">
+                {/* Header */}
+                <div className="bg-[#2d2d2d] border-b border-[#111] px-4 py-3 flex justify-between items-center shrink-0">
+                    <div className="flex items-center gap-2">
+                        <Info size={16} className="text-blue-400"/>
+                        <span className="font-bold text-[#eee] text-sm tracking-wide">Bestiary: {infoModal.name}</span>
+                    </div>
+                    <button onClick={() => setInfoModal(null)} className="text-[#aaa] hover:text-white font-bold p-1">
+                        <X size={18} />
+                    </button>
                 </div>
                 
-                <div className="p-4 overflow-y-auto bg-[#222] custom-scrollbar">
-                    <div className="flex justify-center mb-4 relative">
-                         <div className="w-24 h-24 bg-[#111] border border-[#333] flex items-center justify-center shadow-inner rounded relative overflow-hidden">
+                <div className="p-4 overflow-y-auto bg-[#222] custom-scrollbar flex-1">
+                    
+                    {/* Top Section: Sprite & Vital Stats */}
+                    <div className="flex gap-4 mb-4">
+                        <div className="w-24 h-24 bg-[#181818] border-2 border-[#333] flex items-center justify-center shadow-inner rounded relative overflow-hidden shrink-0">
                              <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.05)_0%,transparent_70%)]"></div>
-                             {infoModal.image ? <img src={infoModal.image} className="max-w-[80px] max-h-[80px] pixelated z-10 scale-150" /> : <div className="w-8 h-8 bg-red-500"></div>}
-                         </div>
+                             {infoModal.image ? <img src={infoModal.image} className="max-w-[80px] max-h-[80px] pixelated z-10 scale-[1.8]" /> : <Skull size={32} className="text-gray-500"/>}
+                             {infoModal.level > player.level + 20 && (
+                                 <div className="absolute bottom-1 right-1 bg-red-900/80 text-red-200 text-[9px] px-1 rounded font-bold border border-red-700">DANGER</div>
+                             )}
+                        </div>
+
+                        <div className="flex-1 grid grid-cols-2 gap-2">
+                            <div className="bg-[#1a1a1a] p-2 rounded border border-[#333] flex flex-col justify-center">
+                                <div className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1"><Heart size={10} className="text-red-500"/> Health</div>
+                                <div className="text-lg font-bold text-gray-200">{infoModal.maxHp.toLocaleString()}</div>
+                            </div>
+                            <div className="bg-[#1a1a1a] p-2 rounded border border-[#333] flex flex-col justify-center">
+                                <div className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1"><Star size={10} className="text-yellow-500"/> Exp</div>
+                                <div className="text-lg font-bold text-gray-200">{infoModal.exp.toLocaleString()}</div>
+                            </div>
+                            <div className="bg-[#1a1a1a] p-2 rounded border border-[#333] flex flex-col justify-center">
+                                <div className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1"><Swords size={10} className="text-gray-400"/> Attack</div>
+                                <div className="text-sm font-bold text-gray-300">{infoModal.damageMin} - {infoModal.damageMax}</div>
+                            </div>
+                            <div className="bg-[#1a1a1a] p-2 rounded border border-[#333] flex flex-col justify-center">
+                                <div className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1"><Coins size={10} className="text-yellow-600"/> Gold</div>
+                                <div className="text-sm font-bold text-yellow-500">{infoModal.minGold} - {infoModal.maxGold}</div>
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-xs mb-4">
-                        <div className="bg-[#1a1a1a] p-2 rounded border border-[#333]">
-                           <span className="text-gray-500 block">Health Points</span>
-                           <span className="text-green-500 font-bold">{infoModal.maxHp.toLocaleString()}</span>
-                        </div>
-                        <div className="bg-[#1a1a1a] p-2 rounded border border-[#333]">
-                           <span className="text-gray-500 block">Experience</span>
-                           <span className="text-white font-bold">{infoModal.exp.toLocaleString()}</span>
-                        </div>
-                        <div className="bg-[#1a1a1a] p-2 rounded border border-[#333]">
-                           <span className="text-gray-500 block">Attack (Est)</span>
-                           <span className="text-red-400 font-bold">{infoModal.damageMin} - {infoModal.damageMax}</span>
-                        </div>
-                        <div className="bg-[#1a1a1a] p-2 rounded border border-[#333]">
-                           <span className="text-gray-500 block">Speed</span>
-                           <span className="text-yellow-400 font-bold">{(2000 / infoModal.attackSpeedMs).toFixed(1)} hit/s</span>
-                        </div>
-                    </div>
-
-                    <div className="mb-4 bg-[#1a1a1a] p-2 rounded border border-[#333] flex justify-between items-center">
-                        <span className="text-gray-500 text-xs font-bold flex items-center gap-1"><Coins size={12}/> Gold Drop</span>
-                        <span className="text-yellow-500 font-bold text-xs">{infoModal.minGold} - {infoModal.maxGold} gp</span>
-                    </div>
-
-                    {/* Elemental Info */}
+                    {/* Elemental Resistances Grid */}
                     {infoModal.elements && (
                        <div className="mb-4">
-                          <h4 className="text-[10px] font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Zap size={10}/> Elemental Multipliers</h4>
-                          <div className="grid grid-cols-3 gap-1">
-                             {Object.entries(infoModal.elements).map(([elem, mult]) => {
-                                 const val = mult as number;
-                                 let color = 'text-gray-400';
-                                 if (val > 1) color = 'text-green-400';
-                                 if (val < 1) color = 'text-red-400';
-                                 if (val === 0) color = 'text-gray-600 line-through';
+                          <h4 className="text-[10px] font-bold text-gray-500 uppercase mb-2 border-b border-[#333] pb-1">Elemental Sensitivity</h4>
+                          <div className="grid grid-cols-4 gap-2">
+                             {[
+                                 { key: 'physical', icon: <Shield size={12}/>, color: 'text-gray-400' },
+                                 { key: 'fire', icon: <Flame size={12}/>, color: 'text-orange-500' },
+                                 { key: 'ice', icon: <Snowflake size={12}/>, color: 'text-cyan-400' },
+                                 { key: 'energy', icon: <Zap size={12}/>, color: 'text-purple-400' },
+                                 { key: 'earth', icon: <Mountain size={12}/>, color: 'text-green-500' },
+                                 { key: 'death', icon: <Skull size={12}/>, color: 'text-gray-200' },
+                             ].map((el) => {
+                                 const mult = infoModal.elements?.[el.key as any] ?? 1;
+                                 let valColor = 'text-gray-500';
+                                 let label = 'Neutral';
                                  
+                                 if (mult > 1) { valColor = 'text-green-500'; label = `Weak (+${Math.round((mult-1)*100)}%)`; }
+                                 if (mult < 1) { valColor = 'text-red-500'; label = `Resist (-${Math.round((1-mult)*100)}%)`; }
+                                 if (mult === 0) { valColor = 'text-gray-600'; label = 'Immune'; }
+
                                  return (
-                                     <div key={elem} className="bg-[#1a1a1a] border border-[#333] px-2 py-1 rounded text-[10px] flex justify-between">
-                                        <span className="capitalize">{elem}</span>
-                                        <span className={`font-bold ${color}`}>x{val}</span>
+                                     <div key={el.key} className="bg-[#1a1a1a] border border-[#333] p-1.5 rounded flex flex-col items-center justify-center text-center" title={`${el.key}: x${mult}`}>
+                                        <div className={`${el.color} mb-1`}>{el.icon}</div>
+                                        <div className={`text-[9px] font-bold ${valColor}`}>{mult === 0 ? '0%' : `${mult}x`}</div>
                                      </div>
                                  );
                              })}
@@ -225,28 +240,46 @@ export const HuntPanel: React.FC<HuntPanelProps> = ({
                        </div>
                     )}
 
-                    {/* Loot Table */}
+                    {/* Visual Loot Table (Grid) */}
                     <div>
-                        <h4 className="text-[10px] font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Star size={10}/> Loot Statistics</h4>
-                        <div className="space-y-1">
+                        <h4 className="text-[10px] font-bold text-gray-500 uppercase mb-2 border-b border-[#333] pb-1 flex justify-between">
+                            <span>Loot Table</span>
+                            <span className="text-[9px] normal-case opacity-50">Hover for details</span>
+                        </h4>
+                        
+                        <div className="flex flex-wrap gap-1.5">
                             {infoModal.lootTable?.sort((a,b) => b.chance - a.chance).map((loot, idx) => {
                                 const item = SHOP_ITEMS.find(i => i.id === loot.itemId);
+                                let rarityColor = 'border-[#333] bg-[#222]';
+                                if (loot.chance < 0.01) rarityColor = 'border-purple-900/50 bg-purple-900/10';
+                                else if (loot.chance < 0.05) rarityColor = 'border-blue-900/50 bg-blue-900/10';
+                                else if (loot.chance < 0.2) rarityColor = 'border-green-900/50 bg-green-900/10';
+
                                 return (
-                                    <div key={idx} className="flex items-center justify-between bg-[#282828] p-1.5 rounded border border-[#333]">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-6 h-6 bg-[#111] border border-[#333] flex items-center justify-center">
-                                                {item?.image && <img src={item.image} className="w-4 h-4 pixelated"/>}
-                                            </div>
-                                            <span className={`text-xs ${item?.sellPrice && item.sellPrice > 5000 ? 'text-yellow-500 font-bold' : 'text-gray-300'}`}>
-                                                {item?.name || loot.itemId}
-                                            </span>
+                                    <div key={idx} className={`w-12 h-12 relative border rounded flex items-center justify-center group ${rarityColor}`}>
+                                        {item?.image ? (
+                                            <img src={item.image} className="max-w-[32px] max-h-[32px] pixelated" />
+                                        ) : (
+                                            <div className="text-[9px] text-gray-500">{loot.itemId.substring(0,2)}</div>
+                                        )}
+                                        
+                                        {/* Drop Chance Badge */}
+                                        <div className="absolute bottom-0 right-0 bg-black/80 text-[8px] text-gray-300 px-1 rounded-tl leading-none">
+                                            {loot.chance < 0.01 ? '<1%' : `${Math.round(loot.chance*100)}%`}
                                         </div>
-                                        <div className="text-[10px] text-gray-500 font-mono">
-                                            {(loot.chance * 100).toFixed(1)}%
+
+                                        {/* Hover Tooltip */}
+                                        <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 w-32 bg-black border border-gray-600 text-[10px] p-2 rounded shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none z-50 text-center">
+                                            <div className="font-bold text-white mb-0.5">{item?.name || loot.itemId}</div>
+                                            <div className="text-yellow-500 font-mono">{(loot.chance * 100).toFixed(2)}%</div>
+                                            {item?.sellPrice && <div className="text-gray-400 text-[9px] mt-1">{item.sellPrice} gp</div>}
                                         </div>
                                     </div>
                                 );
                             })}
+                            {(!infoModal.lootTable || infoModal.lootTable.length === 0) && (
+                                <div className="text-xs text-gray-600 italic p-2">No known loot.</div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -254,42 +287,53 @@ export const HuntPanel: React.FC<HuntPanelProps> = ({
         </div>
       )}
 
-      {/* Area Hunt Modal */}
+      {/* Area Hunt Modal - "CAÇAR LURANDO" */}
       {areaHuntModal && (
-        <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-            <div className="tibia-panel w-full max-w-[280px] shadow-2xl p-2">
-                <div className="bg-[#444] border-b border-[#111] px-2 py-2 flex justify-between items-center mb-3">
-                    <span className="font-bold text-[#eee] text-sm">Area Hunt: {areaHuntModal.monster.name}</span>
-                    <button onClick={() => setAreaHuntModal(null)} className="text-[#aaa] hover:text-white font-bold text-sm px-2">X</button>
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="tibia-panel w-full max-w-[300px] shadow-2xl p-0 overflow-hidden">
+                <div className="bg-red-900/20 border-b border-red-900/50 px-3 py-3 flex justify-between items-center mb-0">
+                    <span className="font-bold text-red-200 text-sm flex items-center gap-2">
+                        <Footprints size={16} /> CAÇAR LURANDO
+                    </span>
+                    <button onClick={() => setAreaHuntModal(null)} className="text-red-400 hover:text-white font-bold text-sm px-2">X</button>
                 </div>
                 
-                <div className="p-2 space-y-4">
-                    <div className="flex items-center justify-between bg-[#222] p-3 border border-[#333] rounded">
+                <div className="p-4 space-y-5 bg-[#222]">
+                    <div className="text-center">
+                        <h3 className="text-gray-200 font-bold text-lg mb-1">{areaHuntModal.monster.name}</h3>
+                        <p className="text-[11px] text-gray-500">Quantos monstros você quer lurar ao mesmo tempo?</p>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-[#1a1a1a] p-4 border border-[#333] rounded shadow-inner">
                         <button 
-                          className="tibia-btn w-8 h-8 font-bold text-lg"
+                          className="tibia-btn w-10 h-10 font-bold text-xl hover:bg-[#333]"
                           onClick={() => setAreaHuntCount(Math.max(2, areaHuntCount - 1))}
                         >-</button>
                         <div className="text-center">
-                            <div className="text-3xl font-bold text-yellow-500">{areaHuntCount}</div>
-                            <div className="text-[10px] text-gray-400 uppercase tracking-widest">Monsters</div>
+                            <div className="text-4xl font-bold text-yellow-500 drop-shadow-md">{areaHuntCount}</div>
+                            <div className="text-[9px] text-gray-400 uppercase tracking-widest font-bold mt-1">Creatures</div>
                         </div>
                         <button 
-                          className="tibia-btn w-8 h-8 font-bold text-lg"
+                          className="tibia-btn w-10 h-10 font-bold text-xl hover:bg-[#333]"
                           onClick={() => setAreaHuntCount(Math.min(8, areaHuntCount + 1))}
                         >+</button>
                     </div>
 
-                    <div className="text-[11px] text-red-300 bg-red-900/20 border border-red-900/50 p-2 rounded leading-tight">
-                        <div className="flex items-center gap-1 mb-1 font-bold"><AlertTriangle size={12}/> DANGER!</div>
-                        Cacar em area aumenta em +8% a força por unidade extra. É aconselhavel usar magias e/ou runas.
-                        <div className="mt-1 text-yellow-500 font-bold">Prepare suas potions também!</div>
+                    <div className="text-[11px] text-red-300 bg-red-950/30 border border-red-900/30 p-3 rounded leading-relaxed">
+                        <div className="flex items-center gap-1.5 mb-2 font-bold text-red-200 border-b border-red-900/30 pb-1">
+                            <AlertTriangle size={14}/> ATENÇÃO
+                        </div>
+                        Lurar criaturas aumenta drasticamente o dano recebido. 
+                        <span className="block mt-2 text-yellow-500/90 font-bold">
+                           Recomendado usar Magias de Área ou Runas (GFB/Avalanche).
+                        </span>
                     </div>
                     
                     <button 
                         onClick={startAreaHunt}
-                        className="tibia-btn w-full py-2 font-bold text-sm text-red-400 border-red-900/50"
+                        className="tibia-btn w-full py-3 font-bold text-sm text-red-100 bg-red-900 hover:bg-red-800 border-red-950 shadow-lg flex items-center justify-center gap-2"
                     >
-                        Start Dangerous Hunt
+                        <Swords size={16} /> COMEÇAR LURE
                     </button>
                 </div>
             </div>
@@ -462,28 +506,32 @@ export const HuntPanel: React.FC<HuntPanelProps> = ({
                         <span className={`text-sm font-bold ${isActive ? 'text-green-400' : 'text-[#ddd]'}`}>{monster.name}</span>
                         {monster.level > player.level + 20 && <span className="text-[9px] text-red-500 font-bold bg-red-900/20 px-1.5 py-0.5 rounded border border-red-900/30">DANGER</span>}
                     </div>
+                    {/* UPDATED: Only XP/h, Removed Gold/h */}
                     <div className="flex justify-between text-[10px] text-[#888]">
-                       <span className="bg-black/30 px-2 py-0.5 rounded border border-white/5">{stats.xpPerHour.toLocaleString()} xp/h</span>
-                       <span className="bg-black/30 px-2 py-0.5 rounded text-yellow-600 border border-white/5">{stats.goldPerHour.toLocaleString()} gp/h</span>
+                       <span className="bg-black/30 px-2 py-0.5 rounded border border-white/5 text-xs text-blue-300">
+                           <span className="font-bold">{stats.xpPerHour.toLocaleString()}</span> XP/h
+                       </span>
                     </div>
                 </div>
 
-                {/* Info Button */}
+                {/* VISIBLE Info Button */}
                 <button 
                   onClick={(e) => openInfoModal(monster, e)}
-                  className="ml-2 p-2 hover:bg-[#3a3a3a] text-gray-500 hover:text-blue-400 rounded transition-colors"
+                  className="ml-2 h-[30px] px-3 flex items-center gap-1.5 tibia-btn bg-[#0d1b2a] border border-blue-900/40 hover:border-blue-500 hover:bg-[#162a40] group/info shadow-lg transition-all active:translate-y-[1px]"
+                  title="Bestiary Info"
                 >
-                    <Info size={14} />
+                    <Info size={14} className="text-blue-500/80 group-hover/info:text-blue-300" />
+                    <span className="text-[10px] font-bold text-blue-500/80 group-hover/info:text-blue-300 tracking-wide">INFO</span>
                 </button>
 
-                {/* Area Hunt Button - Always visible to change qty */}
+                {/* UPDATED Area Hunt Button: "LURAR" */}
                 <button 
                     onClick={(e) => openAreaHuntModal(monster, e)}
                     className="ml-1 px-3 py-1.5 tibia-btn bg-[#2a1111] border-[#500] hover:bg-[#3a1a1a] flex items-center gap-1.5 shadow-[0_0_5px_rgba(200,0,0,0.1)] group/btn opacity-80 hover:opacity-100"
-                    title="Configure Area Hunt"
+                    title="Caçar lurando (Aumenta XP e Dano)"
                 >
-                    <Users size={14} className="text-red-400 group-hover/btn:text-red-300" />
-                    <span className="text-[10px] font-bold text-red-500 group-hover/btn:text-red-300 hidden sm:inline">MULTI</span>
+                    <Footprints size={14} className="text-red-500 group-hover/btn:text-red-300" />
+                    <span className="text-[10px] font-bold text-red-500 group-hover/btn:text-red-300 hidden sm:inline">LURAR</span>
                 </button>
               </div>
             );
@@ -532,13 +580,14 @@ export const HuntPanel: React.FC<HuntPanelProps> = ({
                     </div>
                  </button>
 
-                 {/* Boss Info Button */}
+                 {/* VISIBLE Boss Info Button */}
                  <button 
                   onClick={(e) => openInfoModal(boss, e)}
-                  className="ml-2 p-2 hover:bg-[#3a3a3a] text-gray-500 hover:text-purple-400 rounded transition-colors"
+                  className="ml-2 h-[30px] px-3 flex items-center gap-1.5 tibia-btn bg-[#1a0d2a] border border-purple-900/40 hover:border-purple-500 hover:bg-[#2a1640] group/info shadow-lg transition-all active:translate-y-[1px]"
                   title="Boss Info"
                 >
-                    <Info size={14} />
+                    <Info size={14} className="text-purple-500/80 group-hover/info:text-purple-300" />
+                    <span className="text-[10px] font-bold text-purple-500/80 group-hover/info:text-purple-300 tracking-wide">INFO</span>
                 </button>
               </div>
             );

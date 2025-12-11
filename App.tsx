@@ -683,6 +683,7 @@ export default function App() {
              if (spell && 
                  p.purchasedSpells.includes(spell.id) &&
                  p.level >= spell.minLevel && 
+                 (p.skills[SkillType.MAGIC].level >= (spell.reqMagicLevel || 0)) && // ML Check
                  p.mana >= spell.manaCost &&
                  (p.spellCooldowns[spell.id] || 0) <= now &&
                  p.globalCooldown <= now
@@ -694,7 +695,8 @@ export default function App() {
                 p.spellCooldowns[spell.id] = now + (spell.cooldown || 1000);
                 p.globalCooldown = now + 1000;
 
-                const magicRes = processSkillTraining(p, SkillType.MAGIC, false);
+                // Pass MANA COST as amount to train
+                const magicRes = processSkillTraining(p, SkillType.MAGIC, spell.manaCost);
                 p = magicRes.player;
                 if (magicRes.leveledUp) addLog(`Magic Level up: ${p.skills[SkillType.MAGIC].level}!`, 'gain');
                 addLog(`Cast ${spell.name}.`, 'magic');
@@ -709,7 +711,10 @@ export default function App() {
 
       // Training
       if (trainSkill) {
-        const result = processSkillTraining(p, trainSkill, true);
+        // Reduced base from 25 to 10 to account for new STAGE Multipliers (up to 50x)
+        // Lvl 10-25: 10 * 50 = 500 pts per tick.
+        // Lvl 90+: 10 * 1 = 10 pts per tick.
+        const result = processSkillTraining(p, trainSkill, 10);
         p = result.player;
         if (result.leveledUp) {
           addLog(`Sua skill ${trainSkill} subiu para o nível ${p.skills[trainSkill].level}!`, 'gain');
@@ -718,7 +723,7 @@ export default function App() {
         
         // Shielding only goes up with Melee skills (Sword, Axe, Club)
         if ([SkillType.SWORD, SkillType.AXE, SkillType.CLUB].includes(trainSkill)) {
-            const shieldRes = processSkillTraining(p, SkillType.DEFENSE, true);
+            const shieldRes = processSkillTraining(p, SkillType.DEFENSE, 10);
             p = shieldRes.player;
             if (shieldRes.leveledUp) {
               addLog(`Sua skill Shielding subiu para o nível ${p.skills[SkillType.DEFENSE].level}!`, 'gain');
@@ -743,7 +748,9 @@ export default function App() {
           
           const weapon = p.equipment[EquipmentSlot.HAND_RIGHT];
           const usedSkill = weapon?.scalingStat || SkillType.FIST;
-          const skillRes = processSkillTraining(p, usedSkill, false);
+          // Normal combat hit: amount = 1 (default)
+          // The progression service now applies STAGE MULTIPLIERS automatically to this 1.
+          const skillRes = processSkillTraining(p, usedSkill, 1);
           p = skillRes.player;
           if (skillRes.leveledUp) addLog(`Skill ${usedSkill} up: ${p.skills[usedSkill].level}!`, 'gain');
 
@@ -773,6 +780,7 @@ export default function App() {
               if (spell &&
                   p.purchasedSpells.includes(spell.id) &&
                   p.level >= spell.minLevel && 
+                  (p.skills[SkillType.MAGIC].level >= (spell.reqMagicLevel || 0)) && // ML Check
                   p.mana >= spell.manaCost &&
                   (p.spellCooldowns[spell.id] || 0) <= now
               ) {
@@ -788,7 +796,8 @@ export default function App() {
                   castSpell = true;
                   attackSpellName = spell.name;
 
-                  const magicRes = processSkillTraining(p, SkillType.MAGIC, false);
+                  // Magic Training based on Mana Cost
+                  const magicRes = processSkillTraining(p, SkillType.MAGIC, spell.manaCost);
                   p = magicRes.player;
                   if (magicRes.leveledUp) addLog(`Magic Level up: ${p.skills[SkillType.MAGIC].level}!`, 'gain');
                   addHit(spell.name, 'speech', 'player'); // SPEECH VISUAL
@@ -799,6 +808,7 @@ export default function App() {
           if (!castSpell && p.settings.autoAttackRune && p.settings.selectedRuneId && p.globalCooldown <= now) {
               const runeItem = SHOP_ITEMS.find(i => i.id === p.settings.selectedRuneId);
               if (runeItem && (p.inventory[runeItem.id] || 0) > 0) {
+                  // Rune Requirements Check (Level & Magic Level)
                   if (p.level >= (runeItem.requiredLevel || 0) && getEffectiveSkill(p, SkillType.MAGIC) >= (runeItem.reqMagicLevel || 0)) {
                       
                       const runeDmg = calculateRuneDamage(p, runeItem);
@@ -817,10 +827,9 @@ export default function App() {
                       castSpell = true;
                       attackSpellName = runeItem.name;
 
-                      const magicRes = processSkillTraining(p, SkillType.MAGIC, false);
-                      p = magicRes.player;
-                      if (magicRes.leveledUp) addLog(`Magic Level up: ${p.skills[SkillType.MAGIC].level}!`, 'gain');
-                      // No speech for runes usually, but could add if desired. Standard Tibia shows "Adori Gran..." etc, but item name is fine or nothing.
+                      // Using Runes usually advances ML too in modern Tibia, but historically only making them did.
+                      // Let's assume using them DOES NOT advance ML for now, or advances very little. 
+                      // Sticking to spell casting = ML train.
                   }
               }
           }
@@ -848,7 +857,8 @@ export default function App() {
             const mitigation = calculatePlayerDefense(p);
             const actualDmg = Math.max(0, Math.floor(totalIncomingRaw - mitigation));
             
-            const shieldRes = processSkillTraining(p, SkillType.DEFENSE, false);
+            // Shield training on hit taken
+            const shieldRes = processSkillTraining(p, SkillType.DEFENSE, 1);
             p = shieldRes.player;
             if (shieldRes.leveledUp) addLog(`Shielding up: ${p.skills[SkillType.DEFENSE].level}!`, 'gain');
 

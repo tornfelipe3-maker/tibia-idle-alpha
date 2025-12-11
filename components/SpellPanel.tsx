@@ -14,8 +14,6 @@ export const SpellPanel: React.FC<SpellPanelProps> = ({ player, onBuySpell }) =>
   const playerMagicLevel = getEffectiveSkill(player, SkillType.MAGIC);
 
   // Filter spells for player vocation
-  // If player has no vocation (None), show all (or none, but typically show basic). 
-  // Let's show all but disabled if None.
   const relevantSpells = SPELLS.filter(spell => 
      player.vocation === Vocation.NONE || spell.vocations.includes(player.vocation)
   );
@@ -81,7 +79,7 @@ export const SpellPanel: React.FC<SpellPanelProps> = ({ player, onBuySpell }) =>
                                         </div>
                                         <div className="text-[10px] mt-0.5 flex gap-2">
                                             <span className={levelReqMet ? 'text-gray-400' : 'text-red-500'}>Lvl {spell.minLevel}</span>
-                                            <span className={mlReqMet ? 'text-gray-400' : 'text-red-500'}>ML {spell.reqMagicLevel}</span>
+                                            <span className={mlReqMet ? 'text-gray-400' : 'text-red-500'}>ML {spell.reqMagicLevel || 0}</span>
                                         </div>
                                     </div>
                                 </div>
