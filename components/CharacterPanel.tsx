@@ -12,6 +12,7 @@ interface CharacterPanelProps {
   onDepositItem: (itemId: string) => void;
   onDiscardItem: (itemId: string) => void;
   onToggleSkippedLoot: (itemId: string) => void;
+  onUnequipItem?: (slot: EquipmentSlot) => void; // New prop
 }
 
 // Slot visual component
@@ -32,7 +33,15 @@ const EquipmentSlotView: React.FC<{ item?: Item; slot: EquipmentSlot; onClick?: 
     )}
 
     {item ? (
-      <img src={item.image} alt={item.name} className="max-w-[42px] max-h-[42px] object-contain drop-shadow-md z-10 pixelated relative" />
+      <>
+        <img src={item.image} alt={item.name} className="max-w-[42px] max-h-[42px] object-contain drop-shadow-md z-10 pixelated relative" />
+        {/* Stack Count Indicator */}
+        {item.count && item.count > 1 && (
+            <span className="absolute bottom-0 right-0 text-[10px] text-white bg-black/70 px-1 rounded-tl-sm leading-none font-bold z-20">
+                {item.count}
+            </span>
+        )}
+      </>
     ) : null}
     
     {/* Hover highlight */}
@@ -60,7 +69,7 @@ const SkillBar: React.FC<{ label: string; level: number; progress: number; bonus
   </div>
 );
 
-export const CharacterPanel: React.FC<CharacterPanelProps> = ({ player, onUpdateSettings, onEquipItem, onDepositItem, onDiscardItem, onToggleSkippedLoot }) => {
+export const CharacterPanel: React.FC<CharacterPanelProps> = ({ player, onUpdateSettings, onEquipItem, onDepositItem, onDiscardItem, onToggleSkippedLoot, onUnequipItem }) => {
   const [activeTab, setActiveTab] = useState<'equipment' | 'inventory'>('equipment');
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{x: number, y: number} | null>(null);
@@ -105,6 +114,10 @@ export const CharacterPanel: React.FC<CharacterPanelProps> = ({ player, onUpdate
           setHoverItem(null);
           setHoverPos(null);
       }
+  };
+
+  const handleSlotClick = (slot: EquipmentSlot) => {
+      if (onUnequipItem) onUnequipItem(slot);
   };
 
   const isSkipped = (itemId: string) => player.skippedLoot.includes(itemId);
@@ -213,19 +226,19 @@ export const CharacterPanel: React.FC<CharacterPanelProps> = ({ player, onUpdate
                   <div className="tibia-panel p-3">
                         <div className="flex justify-center">
                             <div className="grid grid-cols-3 gap-2 relative bg-[#2d2d2d] p-2 border-t border-l border-[#555] border-r border-b border-[#000] shadow-lg">
-                                <div className="col-start-1 row-start-1"><EquipmentSlotView onHover={handleHover} item={player.equipment[EquipmentSlot.NECK]} slot={EquipmentSlot.NECK} /></div>
-                                <div className="col-start-2 row-start-1"><EquipmentSlotView onHover={handleHover} item={player.equipment[EquipmentSlot.HEAD]} slot={EquipmentSlot.HEAD} /></div>
-                                <div className="col-start-3 row-start-1"><EquipmentSlotView onHover={handleHover} item={player.equipment[EquipmentSlot.AMMO]} slot={EquipmentSlot.AMMO} /></div>
+                                <div className="col-start-1 row-start-1"><EquipmentSlotView onHover={handleHover} onClick={() => handleSlotClick(EquipmentSlot.NECK)} item={player.equipment[EquipmentSlot.NECK]} slot={EquipmentSlot.NECK} /></div>
+                                <div className="col-start-2 row-start-1"><EquipmentSlotView onHover={handleHover} onClick={() => handleSlotClick(EquipmentSlot.HEAD)} item={player.equipment[EquipmentSlot.HEAD]} slot={EquipmentSlot.HEAD} /></div>
+                                <div className="col-start-3 row-start-1"><EquipmentSlotView onHover={handleHover} onClick={() => handleSlotClick(EquipmentSlot.AMMO)} item={player.equipment[EquipmentSlot.AMMO]} slot={EquipmentSlot.AMMO} /></div>
                                 
-                                <div className="col-start-1 row-start-2"><EquipmentSlotView onHover={handleHover} item={player.equipment[EquipmentSlot.HAND_LEFT]} slot={EquipmentSlot.HAND_LEFT} /></div>
-                                <div className="col-start-2 row-start-2"><EquipmentSlotView onHover={handleHover} item={player.equipment[EquipmentSlot.BODY]} slot={EquipmentSlot.BODY} /></div>
-                                <div className="col-start-3 row-start-2"><EquipmentSlotView onHover={handleHover} item={player.equipment[EquipmentSlot.HAND_RIGHT]} slot={EquipmentSlot.HAND_RIGHT} /></div>
+                                <div className="col-start-1 row-start-2"><EquipmentSlotView onHover={handleHover} onClick={() => handleSlotClick(EquipmentSlot.HAND_LEFT)} item={player.equipment[EquipmentSlot.HAND_LEFT]} slot={EquipmentSlot.HAND_LEFT} /></div>
+                                <div className="col-start-2 row-start-2"><EquipmentSlotView onHover={handleHover} onClick={() => handleSlotClick(EquipmentSlot.BODY)} item={player.equipment[EquipmentSlot.BODY]} slot={EquipmentSlot.BODY} /></div>
+                                <div className="col-start-3 row-start-2"><EquipmentSlotView onHover={handleHover} onClick={() => handleSlotClick(EquipmentSlot.HAND_RIGHT)} item={player.equipment[EquipmentSlot.HAND_RIGHT]} slot={EquipmentSlot.HAND_RIGHT} /></div>
                                 
-                                <div className="col-start-1 row-start-3"><EquipmentSlotView onHover={handleHover} item={player.equipment[EquipmentSlot.RING]} slot={EquipmentSlot.RING} /></div>
-                                <div className="col-start-2 row-start-3"><EquipmentSlotView onHover={handleHover} item={player.equipment[EquipmentSlot.LEGS]} slot={EquipmentSlot.LEGS} /></div>
+                                <div className="col-start-1 row-start-3"><EquipmentSlotView onHover={handleHover} onClick={() => handleSlotClick(EquipmentSlot.RING)} item={player.equipment[EquipmentSlot.RING]} slot={EquipmentSlot.RING} /></div>
+                                <div className="col-start-2 row-start-3"><EquipmentSlotView onHover={handleHover} onClick={() => handleSlotClick(EquipmentSlot.LEGS)} item={player.equipment[EquipmentSlot.LEGS]} slot={EquipmentSlot.LEGS} /></div>
                                 <div className="col-start-3 row-start-3 bg-[#111] opacity-20 rounded-sm"></div>
 
-                                <div className="col-start-2 row-start-4"><EquipmentSlotView onHover={handleHover} item={player.equipment[EquipmentSlot.FEET]} slot={EquipmentSlot.FEET} /></div>
+                                <div className="col-start-2 row-start-4"><EquipmentSlotView onHover={handleHover} onClick={() => handleSlotClick(EquipmentSlot.FEET)} item={player.equipment[EquipmentSlot.FEET]} slot={EquipmentSlot.FEET} /></div>
                             </div>
                         </div>
                   </div>

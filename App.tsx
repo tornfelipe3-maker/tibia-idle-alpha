@@ -158,26 +158,20 @@ export default function App() {
     setAuthError(null);
     setIsAuthLoading(true);
 
-    // Initial Starter Items Logic (moved inside register flow)
+    // Initial Starter Items Logic
     const newPlayer = JSON.parse(JSON.stringify(INITIAL_PLAYER_STATS));
     const coat = SHOP_ITEMS.find(i => i.id === 'coat');
     const club = SHOP_ITEMS.find(i => i.id === 'club');
     if (coat) newPlayer.equipment[EquipmentSlot.BODY] = coat;
     if (club) newPlayer.equipment[EquipmentSlot.HAND_RIGHT] = club;
-
-    // Override the generic save with this specific starter kit in the service? 
-    // The service handles generic registration, let's just let it return success then we overwrite the data with starter items on first save.
-    // Actually, cleaner to update local state then save immediately.
     
     const result = await StorageService.register(acc, pass);
     
     if (result.success && result.data) {
-        // Apply starter items to the 'data' we just got back, just in case service returned raw initial stats
         const starterPlayer = result.data;
         if (coat) starterPlayer.equipment[EquipmentSlot.BODY] = coat;
         if (club) starterPlayer.equipment[EquipmentSlot.HAND_RIGHT] = club;
         
-        // Save immediately with starter items
         await StorageService.save(acc, starterPlayer);
 
         loadPlayerData(starterPlayer);
@@ -210,7 +204,7 @@ export default function App() {
 
   // --- Load / Offline Logic ---
   const loadPlayerData = (loadedPlayer: Player) => {
-      // Ensure new fields exist if loading old save
+      // Ensure fields exist for legacy saves
       if (loadedPlayer.bankGold === undefined) loadedPlayer.bankGold = 0;
       if (loadedPlayer.activeTask === undefined) loadedPlayer.activeTask = null;
       if (loadedPlayer.taskOptions === undefined) loadedPlayer.taskOptions = [];
@@ -224,11 +218,6 @@ export default function App() {
       if (loadedPlayer.settings.autoAttackRune === undefined) loadedPlayer.settings.autoAttackRune = false;
       if (loadedPlayer.settings.selectedRuneId === undefined) loadedPlayer.settings.selectedRuneId = '';
       
-      if (loadedPlayer.settings.selectedHealthPotionId === undefined) loadedPlayer.settings.selectedHealthPotionId = '';
-      if (loadedPlayer.settings.selectedManaPotionId === undefined) loadedPlayer.settings.selectedManaPotionId = '';
-      if (loadedPlayer.settings.selectedHealSpellId === undefined) loadedPlayer.settings.selectedHealSpellId = '';
-      if (loadedPlayer.settings.selectedAttackSpellId === undefined) loadedPlayer.settings.selectedAttackSpellId = '';
-
       // --- Offline Calc ---
       const now = Date.now();
       const lastSave = loadedPlayer.lastSaveTime || now;
@@ -238,7 +227,6 @@ export default function App() {
 
       if (diffSeconds > 60) {
           let logMsg = `You were offline for ${(diffSeconds / 3600).toFixed(1)} hours. `;
-          
           const MAX_HUNT_OFFLINE = 4 * 3600; 
           const MAX_TRAIN_OFFLINE = 12 * 3600; 
 
@@ -292,8 +280,6 @@ export default function App() {
 
     setIsSaving(true);
     await StorageService.save(currentAccount, stateToSave);
-    
-    // Artificial delay for UI feedback
     setTimeout(() => setIsSaving(false), 800);
 
   }, [currentAccount, isAuthenticated]);
@@ -311,10 +297,8 @@ export default function App() {
   useEffect(() => {
     if (isAuthenticated) {
         saveIntervalRef.current = window.setInterval(saveGame, 5000); 
-        
         const handleBeforeUnload = () => saveGame();
         window.addEventListener('beforeunload', handleBeforeUnload);
-
         return () => {
             clearInterval(saveIntervalRef.current);
             window.removeEventListener('beforeunload', handleBeforeUnload);
@@ -322,7 +306,6 @@ export default function App() {
     }
   }, [saveGame, isAuthenticated]);
 
-  // Init Task Options if empty
   useEffect(() => {
     if (isAuthenticated && player.level > 1 && player.taskOptions.length === 0 && !player.activeTask) {
        setPlayer(prev => ({
@@ -332,8 +315,6 @@ export default function App() {
     }
   }, [player.level, player.taskOptions.length, player.activeTask, isAuthenticated]);
 
-
-  // Check for Modals
   useEffect(() => {
     if (!isAuthenticated) return;
     if (player.level >= 8 && player.vocation === Vocation.NONE) {
@@ -373,7 +354,6 @@ export default function App() {
 
   const handleDeath = () => {
     const currentHuntId = activeHuntRef.current;
-    
     if (currentHuntId) {
         const boss = BOSSES.find(b => b.id === currentHuntId);
         if (boss && boss.cooldownSeconds) {
@@ -394,7 +374,6 @@ export default function App() {
     setPlayer(prev => {
       const xpPenalty = 0.1; 
       const goldPenaltyPercent = 0.10 + (Math.random() * 0.15); 
-      
       const lostXp = Math.floor(prev.currentXp * xpPenalty);
       const lostGold = Math.floor(prev.gold * goldPenaltyPercent);
       
@@ -431,7 +410,6 @@ export default function App() {
     const item = SHOP_ITEMS.find(i => i.id === itemId);
     if (!item || !item.slot) return;
     
-    // STRICT REQUIREMENTS CHECK
     if (item.requiredLevel && player.level < item.requiredLevel) {
         addLog(`You need level ${item.requiredLevel} to equip ${item.name}.`, 'danger');
         return;
@@ -446,19 +424,63 @@ export default function App() {
 
     setPlayer(prev => {
       const p = { ...prev };
-      if ((p.inventory[itemId] || 0) > 0) {
-        p.inventory[itemId]--;
-      } else {
-        return prev;
-      }
+      
+      // Determine if item is "stackable" in equipment (Ammo or Thrown Distance Weapon)
+      const isStackable = item.slot === EquipmentSlot.AMMO || (item.scalingStat === SkillType.DISTANCE && !item.weaponType);
+      
+      const quantityToEquip = p.inventory[itemId] || 0;
+      if (quantityToEquip <= 0) return prev;
+
       const existingItem = p.equipment[item.slot!];
-      if (existingItem) {
-        p.inventory[existingItem.id] = (p.inventory[existingItem.id] || 0) + 1;
+
+      // STACKING LOGIC
+      if (isStackable) {
+          // If equipping same stackable item, just add to count
+          if (existingItem && existingItem.id === item.id) {
+              const newTotal = (existingItem.count || 1) + quantityToEquip;
+              p.equipment[item.slot!] = { ...item, count: newTotal };
+              p.inventory[itemId] = 0; // Removed all from inventory
+              addLog(`Added ${quantityToEquip}x ${item.name} to equipment. Total: ${newTotal}.`, 'info');
+          } else {
+              // If replacing or empty slot
+              if (existingItem) {
+                  // Return old item (and its count) to inventory
+                  p.inventory[existingItem.id] = (p.inventory[existingItem.id] || 0) + (existingItem.count || 1);
+              }
+              // Equip new stack
+              p.equipment[item.slot!] = { ...item, count: quantityToEquip };
+              p.inventory[itemId] = 0;
+              addLog(`Equipped ${quantityToEquip}x ${item.name}.`, 'info');
+          }
+      } 
+      // NON-STACKABLE LOGIC (Standard Equip)
+      else {
+          p.inventory[itemId]--; 
+          if (existingItem) {
+              // Non-stackable usually has count 1, but safeguard just in case
+              const oldQty = existingItem.count || 1;
+              p.inventory[existingItem.id] = (p.inventory[existingItem.id] || 0) + oldQty;
+          }
+          p.equipment[item.slot!] = { ...item, count: 1 };
+          addLog(`Equipou ${item.name}.`, 'info');
       }
-      p.equipment[item.slot!] = item;
-      addLog(`Equipou ${item.name}.`, 'info');
+
       return p;
     });
+  };
+
+  const handleUnequipItem = (slot: EquipmentSlot) => {
+      setPlayer(prev => {
+          const p = { ...prev };
+          const item = p.equipment[slot];
+          if (item) {
+              const qty = item.count || 1;
+              p.inventory[item.id] = (p.inventory[item.id] || 0) + qty;
+              delete p.equipment[slot];
+              addLog(`Unequipped ${item.name} (${qty}x).`, 'info');
+          }
+          return p;
+      });
   };
 
   const handleDepositItem = (itemId: string) => {
@@ -683,7 +705,7 @@ export default function App() {
              if (spell && 
                  p.purchasedSpells.includes(spell.id) &&
                  p.level >= spell.minLevel && 
-                 (p.skills[SkillType.MAGIC].level >= (spell.reqMagicLevel || 0)) && // ML Check
+                 (p.skills[SkillType.MAGIC].level >= (spell.reqMagicLevel || 0)) && 
                  p.mana >= spell.manaCost &&
                  (p.spellCooldowns[spell.id] || 0) <= now &&
                  p.globalCooldown <= now
@@ -695,13 +717,12 @@ export default function App() {
                 p.spellCooldowns[spell.id] = now + (spell.cooldown || 1000);
                 p.globalCooldown = now + 1000;
 
-                // Pass MANA COST as amount to train
                 const magicRes = processSkillTraining(p, SkillType.MAGIC, spell.manaCost);
                 p = magicRes.player;
                 if (magicRes.leveledUp) addLog(`Magic Level up: ${p.skills[SkillType.MAGIC].level}!`, 'gain');
                 addLog(`Cast ${spell.name}.`, 'magic');
                 addHit(`+${healAmt}`, 'heal', 'player');
-                addHit(spell.name, 'speech', 'player'); // SPEECH VISUAL
+                addHit(spell.name, 'speech', 'player'); 
              }
           }
       }
@@ -711,9 +732,6 @@ export default function App() {
 
       // Training
       if (trainSkill) {
-        // Reduced base from 25 to 10 to account for new STAGE Multipliers (up to 50x)
-        // Lvl 10-25: 10 * 50 = 500 pts per tick.
-        // Lvl 90+: 10 * 1 = 10 pts per tick.
         const result = processSkillTraining(p, trainSkill, 10);
         p = result.player;
         if (result.leveledUp) {
@@ -721,7 +739,6 @@ export default function App() {
           addHit('Skill Up!', 'heal', 'player');
         }
         
-        // Shielding only goes up with Melee skills (Sword, Axe, Club)
         if ([SkillType.SWORD, SkillType.AXE, SkillType.CLUB].includes(trainSkill)) {
             const shieldRes = processSkillTraining(p, SkillType.DEFENSE, 10);
             p = shieldRes.player;
@@ -748,26 +765,57 @@ export default function App() {
           
           const weapon = p.equipment[EquipmentSlot.HAND_RIGHT];
           const usedSkill = weapon?.scalingStat || SkillType.FIST;
-          // Normal combat hit: amount = 1 (default)
-          // The progression service now applies STAGE MULTIPLIERS automatically to this 1.
           const skillRes = processSkillTraining(p, usedSkill, 1);
           p = skillRes.player;
           if (skillRes.leveledUp) addLog(`Skill ${usedSkill} up: ${p.skills[usedSkill].level}!`, 'gain');
 
-          // Ammo Consumption
-          if (weapon?.scalingStat === SkillType.DISTANCE && weapon.weaponType) {
-              const ammo = p.equipment[EquipmentSlot.AMMO];
-              if (ammo && totalDamage > 0) {
-                 if (p.inventory[ammo.id] > 0) {
-                     p.inventory[ammo.id]--;
-                     if (p.inventory[ammo.id] <= 0) {
-                         delete p.equipment[EquipmentSlot.AMMO];
-                         addLog(`You ran out of ${ammo.name}!`, 'danger');
-                     }
-                 } else {
-                     delete p.equipment[EquipmentSlot.AMMO];
-                 }
-              }
+          // --- Ammo Consumption & Weapon Breaking (Logic Updated for Stacking) ---
+          if (weapon?.scalingStat === SkillType.DISTANCE) {
+            // Bows & Crossbows (Consume Stacked Ammo)
+            if (weapon.weaponType) {
+                const ammo = p.equipment[EquipmentSlot.AMMO];
+                if (ammo && totalDamage > 0) {
+                    if (ammo.count && ammo.count > 0) {
+                        ammo.count--;
+                        if (ammo.count <= 0) {
+                            delete p.equipment[EquipmentSlot.AMMO];
+                            addLog(`You ran out of ${ammo.name}!`, 'danger');
+                        }
+                    } else {
+                        // Fallback for non-stacked usage (shouldn't happen with new logic but safe to keep)
+                        delete p.equipment[EquipmentSlot.AMMO];
+                    }
+                }
+            } 
+            // Thrown Weapons (Spears, Stars) - Consume Stacked Weapon
+            else {
+                let breakChance = 0;
+                if (weapon.id === 'spear') breakChance = 0.038;
+                else if (weapon.id === 'royal_spear') breakChance = 0.032;
+                else if (weapon.id === 'small_stone') breakChance = 0.03;
+                else if (weapon.id === 'assassin_star') breakChance = 0.33;
+                else if (weapon.id === 'viper_star') breakChance = 0.20;
+                else if (weapon.id === 'enchanted_spear') breakChance = 0.01;
+                else if (weapon.id === 'gloom_spear') breakChance = 0.03;
+                
+                if (breakChance > 0 && Math.random() < breakChance) {
+                    if (weapon.count && weapon.count > 1) {
+                        // Stack reduces
+                        weapon.count--;
+                    } else {
+                        // Last one broke
+                        delete p.equipment[EquipmentSlot.HAND_RIGHT];
+                        addLog(`Your ${weapon.name} broke!`, 'danger');
+                        // Auto-refill from inventory attempt (Backup mechanic)
+                        if ((p.inventory[weapon.id] || 0) > 0) {
+                             const qty = p.inventory[weapon.id];
+                             p.equipment[EquipmentSlot.HAND_RIGHT] = { ...weapon, count: qty };
+                             p.inventory[weapon.id] = 0;
+                             addLog(`Equipped backup ${weapon.name}s from backpack.`, 'info');
+                        }
+                    }
+                }
+            }
           }
 
           let castSpell = false;
@@ -826,10 +874,6 @@ export default function App() {
                       
                       castSpell = true;
                       attackSpellName = runeItem.name;
-
-                      // Using Runes usually advances ML too in modern Tibia, but historically only making them did.
-                      // Let's assume using them DOES NOT advance ML for now, or advances very little. 
-                      // Sticking to spell casting = ML train.
                   }
               }
           }
@@ -1278,6 +1322,7 @@ export default function App() {
                   onDepositItem={handleDepositItem}
                   onDiscardItem={handleDiscardItem}
                   onToggleSkippedLoot={handleToggleSkippedLoot}
+                  onUnequipItem={handleUnequipItem}
                />
             </div>
 

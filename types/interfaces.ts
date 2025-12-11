@@ -34,6 +34,8 @@ export interface Item {
   };
   isRune?: boolean;
   runeType?: 'single' | 'area';
+  // New property for stacking in equipment slots
+  count?: number; 
 }
 
 export interface LootDrop {
