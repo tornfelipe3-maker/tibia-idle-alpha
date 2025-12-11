@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
     <title>Tibia Idle</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -126,7 +127,7 @@
         border-left: 2px solid var(--border-light);
       }
       ::-webkit-scrollbar-track {
-        background: url('https://tibia.fandom.com/wiki/Special:Redirect/file/Background_Artwork_Texture.jpg');
+        background: url('https://tibia.fandom.com/wiki/Special:FilePath/Background_Artwork_Texture.jpg');
         background-color: #222;
       }
       ::-webkit-scrollbar-thumb {
@@ -193,11 +194,12 @@
     "react/": "https://esm.sh/react@^19.2.1/",
     "react": "https://esm.sh/react@^19.2.1",
     "react-dom/": "https://esm.sh/react-dom@^19.2.1/",
-    "lucide-react": "https://esm.sh/lucide-react@^0.559.0"
+    "lucide-react": "https://esm.sh/lucide-react@^0.559.0",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "vite": "https://esm.sh/vite@^7.2.7"
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
   <body>
     <div id="root"></div>
