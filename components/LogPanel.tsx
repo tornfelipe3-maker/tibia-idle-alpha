@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect } from 'react';
 import { LogEntry } from '../types';
 
@@ -7,9 +8,19 @@ interface LogPanelProps {
 
 export const LogPanel: React.FC<LogPanelProps> = ({ logs }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+
+  // Check scroll position to decide if we should stick to bottom
+  const handleScroll = () => {
+      if (containerRef.current) {
+          const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+          // Tolerance of 30px
+          isNearBottomRef.current = scrollHeight - scrollTop - clientHeight < 50;
+      }
+  };
 
   useEffect(() => {
-    if (containerRef.current) {
+    if (containerRef.current && isNearBottomRef.current) {
         containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
   }, [logs]);
@@ -34,6 +45,7 @@ export const LogPanel: React.FC<LogPanelProps> = ({ logs }) => {
       </div>
       <div 
         ref={containerRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto p-3 font-mono text-[12px] space-y-1 bg-black custom-scrollbar leading-snug"
       >
         {logs.map((log) => (

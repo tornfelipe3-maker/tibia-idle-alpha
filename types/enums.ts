@@ -36,6 +36,7 @@ export enum NpcType {
   BLUE_DJINN = 'Nahari',
   RASHID = 'Rashid',
   YASIR = 'Yasir',
+  ABENCOADO = 'Abençoado',
 }
 
 export enum DamageType {

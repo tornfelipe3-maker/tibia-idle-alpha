@@ -117,4 +117,5 @@ export const INITIAL_PLAYER_STATS: Player = {
     activeTask: null,
     taskOptions: [],
     skippedLoot: [],
+    hasBlessing: false,
 };

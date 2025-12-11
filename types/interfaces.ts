@@ -146,6 +146,7 @@ export interface Player {
   activeTask: HuntingTask | null;
   taskOptions: HuntingTask[];
   skippedLoot: string[];
+  hasBlessing: boolean;
 }
 
 export interface LogEntry {

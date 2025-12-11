@@ -2,9 +2,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Player, LogEntry, Vocation, SkillType, EquipmentSlot, PlayerSettings, Boss, HuntingTask, HitSplat, Spell, Item } from './types';
 import { MONSTERS, BOSSES, SHOP_ITEMS, QUESTS, getXpForLevel, REGEN_RATES, SPELLS, MAX_STAMINA } from './constants';
-import { calculatePlayerDamage, calculatePlayerDefense, processSkillTraining, calculateSpellDamage, calculateSpellHealing, calculateLootDrop, generateTaskOptions, getXpStageMultiplier, calculateRuneDamage, getEffectiveSkill, StorageService } from './services';
+import { calculatePlayerDamage, calculatePlayerDefense, processSkillTraining, calculateSpellDamage, calculateSpellHealing, calculateLootDrop, generateTaskOptions, getXpStageMultiplier, calculateRuneDamage, getEffectiveSkill, StorageService, HighscoresData } from './services';
 import { CharacterPanel } from './components/CharacterPanel';
 import { HuntPanel } from './components/HuntPanel';
+import { GameWindow } from './components/GameWindow';
 import { LogPanel } from './components/LogPanel';
 import { ShopPanel } from './components/ShopPanel';
 import { TrainingPanel } from './components/TrainingPanel';
@@ -15,7 +16,8 @@ import { TaskPanel } from './components/TaskPanel';
 import { SpellPanel } from './components/SpellPanel';
 import { BotPanel } from './components/BotPanel';
 import { AuthScreen } from './components/AuthScreen';
-import { Crown, Save, LogOut, Swords, Skull, Shield, ShoppingBag, Sparkles, Landmark, Package, Map, Bot, Download } from 'lucide-react';
+import { HighscoresModal } from './components/HighscoresModal';
+import { Crown, Save, LogOut, Swords, Skull, Shield, ShoppingBag, Sparkles, Landmark, Package, Map, Bot, Download, Trophy } from 'lucide-react';
 
 const INITIAL_PLAYER_STATS: Player = {
     name: '',
@@ -66,6 +68,13 @@ const INITIAL_PLAYER_STATS: Player = {
     activeTask: null,
     taskOptions: [],
     skippedLoot: [],
+    hasBlessing: false,
+};
+
+// Helper to extract "Exura" from "Light Healing (Exura)"
+const getSpellIncantation = (name: string) => {
+    const match = name.match(/\((.*?)\)/);
+    return match ? match[1] : name;
 };
 
 export default function App() {
@@ -81,6 +90,10 @@ export default function App() {
   const [activeTrainingSkill, setActiveTrainingSkill] = useState<SkillType | null>(null);
   const [monsterHp, setMonsterHp] = useState<number>(0);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  
+  // Highscores State
+  const [showHighscores, setShowHighscores] = useState(false);
+  const [highscoresData, setHighscoresData] = useState<HighscoresData | null>(null);
   
   // Categorized Navigation State
   const [activeTab, setActiveTab] = useState<'hunt' | 'tasks' | 'quests' | 'train' | 'shop' | 'spells' | 'bank' | 'depot' | 'bot'>('hunt');
@@ -202,6 +215,30 @@ export default function App() {
     setLogs([]);
   };
 
+  // --- Highscores Update Logic ---
+  const updateHighscores = useCallback(() => {
+      // Fetch highscores (Local + Mocked Online Players)
+      const data = StorageService.getHighscores();
+      setHighscoresData(data);
+  }, []);
+
+  useEffect(() => {
+      if (isAuthenticated) {
+          // Initial fetch when logging in
+          updateHighscores();
+          
+          // Auto-update every 5 minutes
+          const interval = setInterval(updateHighscores, 5 * 60 * 1000);
+          return () => clearInterval(interval);
+      }
+  }, [isAuthenticated, updateHighscores]);
+
+  const handleOpenHighscores = () => {
+      // Force refresh when opening the modal
+      updateHighscores();
+      setShowHighscores(true);
+  };
+
   // --- Load / Offline Logic ---
   const loadPlayerData = (loadedPlayer: Player) => {
       // Ensure fields exist for legacy saves
@@ -217,6 +254,7 @@ export default function App() {
       if (loadedPlayer.globalCooldown === undefined) loadedPlayer.globalCooldown = 0;
       if (loadedPlayer.settings.autoAttackRune === undefined) loadedPlayer.settings.autoAttackRune = false;
       if (loadedPlayer.settings.selectedRuneId === undefined) loadedPlayer.settings.selectedRuneId = '';
+      if (loadedPlayer.hasBlessing === undefined) loadedPlayer.hasBlessing = false;
       
       // --- Offline Calc ---
       const now = Date.now();
@@ -372,12 +410,44 @@ export default function App() {
     setActiveTrainingSkill(null);
     
     setPlayer(prev => {
-      const xpPenalty = 0.1; 
-      const goldPenaltyPercent = 0.10 + (Math.random() * 0.15); 
-      const lostXp = Math.floor(prev.currentXp * xpPenalty);
-      const lostGold = Math.floor(prev.gold * goldPenaltyPercent);
+      // DEATH PENALTY LOGIC
+      const hasBless = prev.hasBlessing;
       
-      addLog(`Você morreu! Perdeu ${lostXp.toLocaleString()} XP e ${lostGold.toLocaleString()} Gold.`, 'danger');
+      // Base penalties (Without Bless)
+      const baseXP_LossPercent = 0.10; // 10%
+      const baseGold_LossPercent = 0.10 + (Math.random() * 0.15); // 10-25%
+      const baseSkill_LossPercent = 0.10; // 10% of current skill progress
+
+      // Penalty Multiplier (95% reduction if blessed = 0.05)
+      const penaltyMultiplier = hasBless ? 0.05 : 1.0;
+
+      const lostXp = Math.floor(prev.currentXp * baseXP_LossPercent * penaltyMultiplier);
+      const lostGold = Math.floor(prev.gold * baseGold_LossPercent * penaltyMultiplier);
+      
+      // Skill Loss Logic
+      const updatedSkills = { ...prev.skills };
+      let skillsLostMsg = "";
+
+      Object.keys(updatedSkills).forEach((key) => {
+          const skillType = key as SkillType;
+          if (updatedSkills[skillType].level > 10) { // Only lose skills if > 10
+             const rawLoss = 100 * baseSkill_LossPercent * penaltyMultiplier; // e.g. 10 * 1.0 = 10% progress loss
+             
+             updatedSkills[skillType].progress -= rawLoss;
+             
+             // Downgrade level if progress < 0
+             if (updatedSkills[skillType].progress < 0) {
+                 updatedSkills[skillType].level = Math.max(10, updatedSkills[skillType].level - 1);
+                 updatedSkills[skillType].progress = 100 + updatedSkills[skillType].progress; // Wrap around (e.g. -5 becomes 95%)
+             }
+          }
+      });
+      
+      if (hasBless) {
+          addLog(`Você morreu! Graças à Bless, perdeu apenas: ${lostXp.toLocaleString()} XP e ${lostGold.toLocaleString()} Gold.`, 'danger');
+      } else {
+          addLog(`Você morreu! Perdeu ${lostXp.toLocaleString()} XP, ${lostGold.toLocaleString()} Gold e Skills.`, 'danger');
+      }
 
       return {
         ...prev,
@@ -385,7 +455,9 @@ export default function App() {
         mana: prev.maxMana,
         currentXp: Math.max(0, prev.currentXp - lostXp),
         gold: Math.max(0, prev.gold - lostGold),
-        activeHuntCount: 1 
+        activeHuntCount: 1,
+        skills: updatedSkills,
+        hasBlessing: false // Bless is consumed on death
       };
     });
   };
@@ -557,6 +629,32 @@ export default function App() {
     }
   };
 
+  // Tibia Formula for Blessing Cost
+  const getBlessingCost = (level: number) => {
+      if (level <= 30) return 2000;
+      if (level >= 120) return 20000;
+      return 2000 + (level - 30) * 200;
+  };
+
+  const handleBuyBlessing = () => {
+      if (player.hasBlessing) {
+          addLog("You are already blessed by the gods.", 'info');
+          return;
+      }
+      const cost = getBlessingCost(player.level);
+      if (player.gold >= cost) {
+          setPlayer(prev => ({
+              ...prev,
+              gold: prev.gold - cost,
+              hasBlessing: true
+          }));
+          addLog("You have been blessed! Death penalties reduced by 95%.", 'gain');
+          addHit("BLESSED!", 'heal', 'player');
+      } else {
+          addLog(`You need ${cost.toLocaleString()} gold for the blessing.`, 'danger');
+      }
+  };
+
   const handleBuySpell = (spell: Spell) => {
       if (player.gold >= spell.price) {
           setPlayer(prev => ({
@@ -720,9 +818,11 @@ export default function App() {
                 const magicRes = processSkillTraining(p, SkillType.MAGIC, spell.manaCost);
                 p = magicRes.player;
                 if (magicRes.leveledUp) addLog(`Magic Level up: ${p.skills[SkillType.MAGIC].level}!`, 'gain');
-                addLog(`Cast ${spell.name}.`, 'magic');
+                
+                const incantation = getSpellIncantation(spell.name);
+                addLog(`Cast ${incantation}.`, 'magic');
                 addHit(`+${healAmt}`, 'heal', 'player');
-                addHit(spell.name, 'speech', 'player'); 
+                addHit(incantation, 'speech', 'player'); 
              }
           }
       }
@@ -842,13 +942,13 @@ export default function App() {
                   p.globalCooldown = now + 2000; 
                   
                   castSpell = true;
-                  attackSpellName = spell.name;
+                  attackSpellName = getSpellIncantation(spell.name);
 
                   // Magic Training based on Mana Cost
                   const magicRes = processSkillTraining(p, SkillType.MAGIC, spell.manaCost);
                   p = magicRes.player;
                   if (magicRes.leveledUp) addLog(`Magic Level up: ${p.skills[SkillType.MAGIC].level}!`, 'gain');
-                  addHit(spell.name, 'speech', 'player'); // SPEECH VISUAL
+                  addHit(attackSpellName, 'speech', 'player'); // SPEECH VISUAL
               }
           }
 
@@ -1065,6 +1165,13 @@ export default function App() {
   return (
     <div className="h-screen w-screen overflow-hidden flex items-center justify-center bg-[#0d0d0d] font-sans">
       
+      {/* Highscores Modal */}
+      <HighscoresModal 
+        isOpen={showHighscores} 
+        onClose={() => setShowHighscores(false)} 
+        data={highscoresData} 
+      />
+
       {/* Offline Report Modal */}
       {offlineReport && (
          <div className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4">
@@ -1172,8 +1279,17 @@ export default function App() {
            <div className="flex items-center gap-3">
               <div className="text-[#c0c0c0] font-bold tracking-wider text-lg font-serif">TIBIA IDLE</div>
               <div className="h-4 w-[1px] bg-[#444]"></div>
-              <div className="text-xs text-[#777]">
-                 Account: <span className="text-yellow-500 font-bold">{currentAccount}</span>
+              <div className="text-xs text-[#777] flex items-center gap-2">
+                 <span>Account: <span className="text-yellow-500 font-bold">{currentAccount}</span></span>
+                 {/* HIGHSCORES BUTTON */}
+                 <button 
+                    onClick={handleOpenHighscores}
+                    className="bg-[#2a2a2a] hover:bg-[#333] text-yellow-500 px-3 py-1.5 rounded border border-[#444] hover:border-yellow-600 flex items-center gap-1.5 ml-3 transition-colors shadow-sm"
+                    title="View Global Highscores"
+                 >
+                    <Trophy size={14} className="text-yellow-500" /> 
+                    <span className="font-bold text-[10px] uppercase tracking-wide">Highscores</span>
+                 </button>
               </div>
            </div>
            
@@ -1273,9 +1389,11 @@ export default function App() {
                             playerInventory={player.inventory}
                             playerQuests={player.quests}
                             skippedLoot={player.skippedLoot}
+                            playerHasBlessing={player.hasBlessing}
                             onBuyItem={buyItem}
                             onSellItem={sellItem}
                             onToggleSkippedLoot={handleToggleSkippedLoot}
+                            onBuyBlessing={handleBuyBlessing}
                             />
                         )}
                         {activeTab === 'spells' && (

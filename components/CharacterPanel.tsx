@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Player, EquipmentSlot, Item, SkillType, PlayerSettings } from '../types';
 import { SHOP_ITEMS, MAX_STAMINA, EMPTY_SLOT_IMAGES } from '../constants';
-import { Shield, Backpack, User, EyeOff, Trash2 } from 'lucide-react';
+import { Shield, Backpack, User, EyeOff, Trash2, Sun } from 'lucide-react';
 import { ItemTooltip } from './ItemTooltip';
 
 interface CharacterPanelProps {
@@ -167,7 +167,14 @@ export const CharacterPanel: React.FC<CharacterPanelProps> = ({ player, onUpdate
       {/* --- GLOBAL STATS SECTION (Always Visible) --- */}
       <div className="tibia-panel p-2.5 mb-2 shrink-0">
          <div className="text-sm font-bold text-[#eee] mb-3 flex justify-between items-center bg-[#444] px-2 py-1 border border-[#111] shadow-sm">
-            <span className="truncate">{player.name || 'Hero'}</span>
+            <div className="flex items-center gap-1.5 truncate">
+                <span className="truncate">{player.name || 'Hero'}</span>
+                {player.hasBlessing && (
+                    <div title="Blessed">
+                        <Sun size={12} className="text-yellow-400 animate-pulse" />
+                    </div>
+                )}
+            </div>
             <span className="text-xs text-[#aaa]">{player.vocation}</span>
          </div>
 

@@ -1,12 +1,8 @@
 
-import { Player } from '../types';
+import { Player, SkillType, Vocation } from '../types';
 import { INITIAL_PLAYER_STATS } from '../constants';
 
 const ACCOUNTS_KEY = 'tibia_idle_accounts_v1';
-
-// This is where you would initialize Supabase in the future
-// import { createClient } from '@supabase/supabase-js';
-// const supabase = createClient('YOUR_SUPABASE_URL', 'YOUR_SUPABASE_KEY');
 
 interface AccountDb {
   [accountName: string]: {
@@ -15,14 +11,57 @@ interface AccountDb {
   }
 }
 
+export interface HighscoreEntry {
+    name: string;
+    vocation: string;
+    value: number;
+    isPlayer: boolean; // To highlight the player in the list
+}
+
+export interface HighscoresData {
+    [category: string]: HighscoreEntry[];
+}
+
+// Mock Data for "Online" feel
+const LEGEND_NAMES = [
+    'Eternal Oblivion', 'Bubble', 'Cachero', 'Mateusz Dragon Wielki', 'Setzer Gambler', 
+    'Arieswar', 'Seromontis', 'Taifun Devilry', 'Lord\'Paulistinha', 'Tripida',
+    'Kharsek', 'Moonzinn', 'Bobeek', 'Goraca', 'Dev onica'
+];
+
+const generateMockPlayers = (): Player[] => {
+    // Generates fake players to populate the leaderboard
+    return LEGEND_NAMES.map((name, index) => {
+        // Create varied levels based on "legend" status roughly
+        const baseLevel = 200 - (index * 10) + Math.floor(Math.random() * 50); 
+        const vocation = Object.values(Vocation)[Math.floor(Math.random() * 4) + 1] as Vocation; // Random voc except None/Monk occasionally
+        
+        return {
+            ...INITIAL_PLAYER_STATS,
+            name: name,
+            level: Math.max(10, baseLevel),
+            vocation: vocation,
+            // Mock skills roughly based on level
+            skills: {
+                [SkillType.MAGIC]: { level: Math.floor(baseLevel / 3), progress: 0 },
+                [SkillType.SWORD]: { level: Math.floor(baseLevel / 2), progress: 0 },
+                [SkillType.AXE]: { level: Math.floor(baseLevel / 2), progress: 0 },
+                [SkillType.CLUB]: { level: Math.floor(baseLevel / 2), progress: 0 },
+                [SkillType.DISTANCE]: { level: Math.floor(baseLevel / 2), progress: 0 },
+                [SkillType.DEFENSE]: { level: Math.floor(baseLevel / 2), progress: 0 },
+                [SkillType.FIST]: { level: Math.floor(baseLevel / 4), progress: 0 },
+            }
+        };
+    });
+};
+
 export const StorageService = {
-  // Simulates an async network delay to prepare for real backend
   async delay(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
   },
 
   async login(account: string, pass: string): Promise<{ success: boolean; data?: Player; error?: string }> {
-    await this.delay(300); // Simulate network
+    await this.delay(300); 
 
     try {
       const dbStr = localStorage.getItem(ACCOUNTS_KEY);
@@ -49,7 +88,6 @@ export const StorageService = {
 
       if (db[account]) return { success: false, error: 'Account already exists.' };
 
-      // Create new player with deep copy
       const newPlayer = JSON.parse(JSON.stringify(INITIAL_PLAYER_STATS));
 
       db[account] = { password: pass, data: newPlayer };
@@ -62,7 +100,6 @@ export const StorageService = {
   },
 
   async save(account: string, data: Player): Promise<boolean> {
-    // In a real backend, this would send 'data' to the API/Supabase
     try {
       const dbStr = localStorage.getItem(ACCOUNTS_KEY);
       if (dbStr) {
@@ -80,8 +117,6 @@ export const StorageService = {
     }
   },
 
-  // --- Backup Features (Crucial for Web Games without backend) ---
-
   exportSaveString(account: string): string | null {
     const dbStr = localStorage.getItem(ACCOUNTS_KEY);
     if (!dbStr) return null;
@@ -89,10 +124,9 @@ export const StorageService = {
     const acc = db[account];
     if (!acc) return null;
 
-    // Create a base64 string of the account data
     try {
         const json = JSON.stringify(acc);
-        return btoa(unescape(encodeURIComponent(json))); // Safe base64 encoding
+        return btoa(unescape(encodeURIComponent(json))); 
     } catch (e) {
         return null;
     }
@@ -107,13 +141,6 @@ export const StorageService = {
             return { success: false, error: 'Invalid save format.' };
         }
 
-        // We use the player name as the key, or prompt user? 
-        // For simplicity, we assume the user remembers their account name or we extract it from the save if we stored it (we didn't store account name inside data, just player name).
-        // Let's use the player Name as account name fallback if needed, or ask user.
-        // CURRENT IMPLEMENTATION: We merge this into the local DB.
-        
-        // Since our structure is Account -> Data, and we exported the whole object {password:..., data:...}
-        // We need to know the Key. Let's assume the user has to provide the name OR we use the Player Name.
         const key = accData.data.name.toLowerCase().replace(/\s/g, '_') || 'imported_user';
 
         const dbStr = localStorage.getItem(ACCOUNTS_KEY);
@@ -127,5 +154,50 @@ export const StorageService = {
     } catch (e) {
         return { success: false, error: 'Invalid save string.' };
     }
+  },
+
+  // This function simulates a global database query
+  getHighscores(): HighscoresData | null {
+      try {
+          const dbStr = localStorage.getItem(ACCOUNTS_KEY);
+          let realPlayers: Player[] = [];
+          
+          if (dbStr) {
+            const db: AccountDb = JSON.parse(dbStr);
+            realPlayers = Object.values(db).map(acc => acc.data).filter(p => p.name);
+          }
+
+          // Combine Real Players with Fake Legends to create a competitive "Online" environment
+          const mockPlayers = generateMockPlayers();
+          const allPlayers = [...realPlayers, ...mockPlayers];
+
+          // Helper to get Top 10 sorted
+          const getTop = (getValue: (p: Player) => number) => {
+              return allPlayers
+                  .sort((a, b) => getValue(b) - getValue(a))
+                  .slice(0, 10)
+                  .map(p => ({
+                      name: p.name,
+                      vocation: p.vocation,
+                      value: Math.floor(getValue(p)),
+                      isPlayer: realPlayers.some(rp => rp.name === p.name) // Check if it's a real user
+                  }));
+          };
+
+          return {
+              'Level': getTop(p => p.level + (p.currentXp / p.maxXp)),
+              'Magic Level': getTop(p => p.skills[SkillType.MAGIC].level + (p.skills[SkillType.MAGIC].progress / 100)),
+              'Sword Fighting': getTop(p => p.skills[SkillType.SWORD].level + (p.skills[SkillType.SWORD].progress / 100)),
+              'Axe Fighting': getTop(p => p.skills[SkillType.AXE].level + (p.skills[SkillType.AXE].progress / 100)),
+              'Club Fighting': getTop(p => p.skills[SkillType.CLUB].level + (p.skills[SkillType.CLUB].progress / 100)),
+              'Distance Fighting': getTop(p => p.skills[SkillType.DISTANCE].level + (p.skills[SkillType.DISTANCE].progress / 100)),
+              'Shielding': getTop(p => p.skills[SkillType.DEFENSE].level + (p.skills[SkillType.DEFENSE].progress / 100)),
+              'Fist Fighting': getTop(p => p.skills[SkillType.FIST].level + (p.skills[SkillType.FIST].progress / 100)),
+          };
+
+      } catch (e) {
+          console.error("Highscore fetch error", e);
+          return null;
+      }
   }
 };
