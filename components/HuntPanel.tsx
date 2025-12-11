@@ -524,6 +524,19 @@ export const HuntPanel: React.FC<HuntPanelProps> = ({
                     <span className="text-[10px] font-bold text-blue-500/80 group-hover/info:text-blue-300 tracking-wide">INFO</span>
                 </button>
 
+                {/* NEW EXPLICIT HUNT BUTTON */}
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        handleRowClick(monster.id, monster.name, false);
+                    }}
+                    className="ml-1 h-[30px] px-3 flex items-center gap-1.5 tibia-btn bg-[#2a0d0d] border border-red-900/60 hover:border-red-500 hover:bg-[#401010] group/hunt shadow-lg transition-all active:translate-y-[1px]"
+                    title="Start Hunting (Single)"
+                >
+                    <Swords size={14} className="text-red-500/80 group-hover/hunt:text-red-300" />
+                    <span className="text-[10px] font-bold text-red-500/80 group-hover/hunt:text-red-300 tracking-wide hidden sm:inline">CAÇAR</span>
+                </button>
+
                 {/* UPDATED Area Hunt Button: "LURAR" */}
                 <button 
                     onClick={(e) => openAreaHuntModal(monster, e)}
