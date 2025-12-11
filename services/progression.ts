@@ -27,12 +27,20 @@ const PRIMARY_SKILLS: Record<Vocation, SkillType[]> = {
 // Skill Stages: Multipliers based on current skill level AND if it is a primary skill
 const getSkillStageMultiplier = (level: number, skillType: SkillType, vocation: Vocation): number => {
     
+    // NO VOCATION BALANCING (Rookgaard Style)
+    // Limits progression significantly to prevent high skills before vocation.
+    if (vocation === Vocation.NONE) {
+        if (level <= 10) return 5;  // Moderate start (vs 50x for main)
+        if (level <= 13) return 2;  // Slows down significantly
+        return 0.5;                 // Very slow ("Soft Cap" at 13)
+    }
+
     // Check if this skill is primary for the vocation
     const isPrimary = PRIMARY_SKILLS[vocation]?.includes(skillType);
 
     // If it is NOT a primary skill (e.g. Knight training Magic Level), return base rate (1x)
     // This respects the "proportion" - harder skills remain hard.
-    if (!isPrimary && vocation !== Vocation.NONE) {
+    if (!isPrimary) {
         // Special case: Mages training shielding is slightly faster than weapon skills but still secondary
         if ((vocation === Vocation.SORCERER || vocation === Vocation.DRUID) && skillType === SkillType.DEFENSE) {
             return 1;
@@ -40,7 +48,7 @@ const getSkillStageMultiplier = (level: number, skillType: SkillType, vocation: 
         return 1; 
     }
 
-    // PRIMARY SKILL STAGES (The user's requested curve)
+    // PRIMARY SKILL STAGES (The user's requested curve for Main Characters)
     if (level <= 25) return 50; // Super Fast
     if (level <= 40) return 30; // Very Fast
     if (level <= 60) return 15; // Fast
