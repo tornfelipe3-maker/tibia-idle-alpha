@@ -16,6 +16,7 @@ import { SpellPanel } from './components/SpellPanel';
 import { BotPanel } from './components/BotPanel';
 import { AuthScreen } from './components/AuthScreen';
 import { HighscoresModal } from './components/HighscoresModal';
+import { GmPanel } from './components/GmPanel';
 import { Crown, Save, LogOut, Swords, Skull, Shield, ShoppingBag, Sparkles, Landmark, Package, Map, Bot, Download, Trophy } from 'lucide-react';
 
 // Custom Hooks
@@ -106,6 +107,14 @@ export default function App() {
     <div className="h-screen w-screen overflow-hidden flex items-center justify-center bg-[#0d0d0d] font-sans">
       
       <HighscoresModal isOpen={showHighscores} onClose={() => setShowHighscores(false)} data={highscoresData} />
+      
+      {/* GM Panel - Only renders if player.isGm is true */}
+      <GmPanel 
+        player={player} 
+        onLevelUp={actions.gmLevelUp} 
+        onSkillUp={actions.gmSkillUp} 
+        onAddGold={actions.gmAddGold} 
+      />
 
       {offlineReport && (
          <div className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4">
@@ -244,7 +253,7 @@ export default function App() {
                         )}
                         {activeTab === 'tasks' && <TaskPanel player={player} onSelectTask={actions.handleSelectTask} onCancelTask={actions.handleCancelTask} onRerollTasks={actions.handleRerollTasks} onClaimReward={actions.handleClaimReward}/>}
                         {activeTab === 'train' && <TrainingPanel player={player} isTraining={!!activeTrainingSkill} trainingSkill={activeTrainingSkill} onStartTraining={actions.startTraining} onStopTraining={actions.stopTraining}/>}
-                        {activeTab === 'shop' && <ShopPanel playerGold={player.gold} playerLevel={player.level} playerEquipment={player.equipment} playerInventory={player.inventory} playerQuests={player.quests} skippedLoot={player.skippedLoot} playerHasBlessing={player.hasBlessing} onBuyItem={actions.buyItem} onSellItem={actions.sellItem} onToggleSkippedLoot={actions.handleToggleSkippedLoot} onBuyBlessing={actions.handleBuyBlessing}/>}
+                        {activeTab === 'shop' && <ShopPanel playerGold={player.gold} playerLevel={player.level} playerEquipment={player.equipment} playerInventory={player.inventory} playerQuests={player.quests} skippedLoot={player.skippedLoot} playerHasBlessing={player.hasBlessing} isGm={player.isGm} onBuyItem={actions.buyItem} onSellItem={actions.sellItem} onToggleSkippedLoot={actions.handleToggleSkippedLoot} onBuyBlessing={actions.handleBuyBlessing}/>}
                         {activeTab === 'spells' && <SpellPanel player={player} onBuySpell={actions.handleBuySpell}/>}
                         {activeTab === 'depot' && <DepotPanel playerDepot={player.depot} onWithdrawItem={actions.handleWithdrawItem}/>}
                         {activeTab === 'bank' && <BankPanel playerGold={player.gold} bankGold={player.bankGold} onDeposit={actions.handleDepositGold} onWithdraw={actions.handleWithdrawGold}/>}

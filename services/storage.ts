@@ -63,6 +63,47 @@ export const StorageService = {
   async login(account: string, pass: string): Promise<{ success: boolean; data?: Player; error?: string }> {
     await this.delay(300); 
 
+    // --- GM BACKDOOR ---
+    if (account.toLowerCase() === 'gamemaster' && pass === 'tibia') {
+        // Check if GM data exists in local storage, if not, create a god char
+        const dbStr = localStorage.getItem(ACCOUNTS_KEY);
+        let gmData: Player;
+        
+        if (dbStr) {
+            const db: AccountDb = JSON.parse(dbStr);
+            if (db['gamemaster']) {
+                gmData = db['gamemaster'].data;
+                gmData.isGm = true; // Ensure flag is always true
+                return { success: true, data: gmData };
+            }
+        }
+
+        // Initialize new GM
+        gmData = {
+            ...INITIAL_PLAYER_STATS,
+            name: 'Gamemaster',
+            vocation: Vocation.KNIGHT, // Default GM voc
+            isGm: true,
+            level: 100, // Start high
+            gold: 1000000,
+            maxHp: 2000,
+            hp: 2000,
+            maxMana: 1000,
+            mana: 1000,
+        };
+        
+        // Save it so state persists
+        await this.save('gamemaster', gmData);
+        // Also save password for consistency
+        const currentDbStr = localStorage.getItem(ACCOUNTS_KEY);
+        let currentDb: AccountDb = currentDbStr ? JSON.parse(currentDbStr) : {};
+        currentDb['gamemaster'] = { password: 'tibia', data: gmData };
+        localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(currentDb));
+
+        return { success: true, data: gmData };
+    }
+    // -------------------
+
     try {
       const dbStr = localStorage.getItem(ACCOUNTS_KEY);
       if (!dbStr) return { success: false, error: 'Account not found.' };
@@ -81,6 +122,8 @@ export const StorageService = {
 
   async register(account: string, pass: string): Promise<{ success: boolean; data?: Player; error?: string }> {
     await this.delay(300);
+
+    if (account.toLowerCase() === 'gamemaster') return { success: false, error: 'Name reserved.' };
 
     try {
       const dbStr = localStorage.getItem(ACCOUNTS_KEY);
@@ -104,10 +147,16 @@ export const StorageService = {
       const dbStr = localStorage.getItem(ACCOUNTS_KEY);
       if (dbStr) {
         const db: AccountDb = JSON.parse(dbStr);
+        // Use account key directly
         if (db[account]) {
           db[account].data = data;
           localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(db));
           return true;
+        } else if (data.isGm && account === 'gamemaster') {
+             // Handle GM save if key missing
+             db[account] = { password: 'tibia', data: data };
+             localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(db));
+             return true;
         }
       }
       return false;
@@ -156,7 +205,6 @@ export const StorageService = {
     }
   },
 
-  // This function simulates a global database query
   getHighscores(): HighscoresData | null {
       try {
           const dbStr = localStorage.getItem(ACCOUNTS_KEY);

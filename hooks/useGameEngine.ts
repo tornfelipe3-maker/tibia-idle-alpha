@@ -189,6 +189,11 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
     setActiveTrainingSkill(null);
     
     setPlayer(prev => {
+      if (prev.isGm) {
+          addLog('GM nunca morre de verdade. Recuperando HP.', 'info');
+          return { ...prev, hp: prev.maxHp, mana: prev.maxMana };
+      }
+
       const hasBless = prev.hasBlessing;
       const baseXP_LossPercent = 0.10; 
       const baseGold_LossPercent = 0.10 + (Math.random() * 0.15); 
@@ -230,12 +235,45 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
     });
   };
 
+  // --- GM ACTIONS ---
+  const gmLevelUp = () => {
+      setPlayer(prev => {
+          const xpNeeded = prev.maxXp - prev.currentXp;
+          let p = { ...prev, currentXp: prev.currentXp + xpNeeded };
+          p = handleLevelUp(p);
+          addLog('GM Power: Level Up!', 'gain');
+          return p;
+      });
+  };
+
+  const gmAddGold = () => {
+      setPlayer(prev => {
+          addLog('GM Power: Added 1,000,000 Gold.', 'gain');
+          return { ...prev, gold: prev.gold + 1000000 };
+      });
+  };
+
+  const gmSkillUp = () => {
+      setPlayer(prev => {
+          const newSkills = { ...prev.skills };
+          Object.keys(newSkills).forEach(k => {
+              newSkills[k as SkillType].level += 5; // Add 5 levels at a time
+          });
+          addLog('GM Power: All Skills +5!', 'gain');
+          return { ...prev, skills: newSkills };
+      });
+  };
+
   // --- ACTIONS (Exposed to UI) ---
   const actions = {
       saveGame,
       setOfflineReport,
-      setPlayer, // Direct set if needed, but prefer specific actions
+      setPlayer, 
       
+      gmLevelUp,
+      gmAddGold,
+      gmSkillUp,
+
       startHunt: (monsterId: string, isBoss: boolean = false, count: number = 1) => {
         if (activeTrainingSkill) setActiveTrainingSkill(null);
         const m = isBoss ? BOSSES.find(x => x.id === monsterId) : MONSTERS.find(x => x.id === monsterId);
@@ -593,7 +631,15 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
           }
 
           let currentMonHp = monsterHpRef.current;
+          
+          // Calculate Basic Auto Attack Damage
           let totalDamage = calculatePlayerDamage(p); 
+          // Flag to indicate if we have an auto attack source
+          if (totalDamage > 0) {
+              if (Math.random() > 0.7) {
+                  addLog(`You hit ${monster.name} for ${totalDamage} hitpoints. (Auto Attack)`, 'combat');
+              }
+          }
           
           const weapon = p.equipment[EquipmentSlot.HAND_RIGHT];
           const usedSkill = weapon?.scalingStat || SkillType.FIST;
@@ -647,7 +693,9 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
               if (spell && p.purchasedSpells.includes(spell.id) && p.level >= spell.minLevel && (p.skills[SkillType.MAGIC].level >= (spell.reqMagicLevel || 0)) && p.mana >= spell.manaCost && (p.spellCooldowns[spell.id] || 0) <= now) {
                   const spellDmg = calculateSpellDamage(p, spell);
                   const areaMultiplier = huntCount; 
-                  totalDamage += (spellDmg * areaMultiplier);
+                  const finalSpellDmg = spellDmg * areaMultiplier;
+                  
+                  totalDamage += finalSpellDmg;
                   p.mana -= spell.manaCost;
                   p.spellCooldowns[spell.id] = now + (spell.cooldown || 2000);
                   p.globalCooldown = now + 2000; 
@@ -657,6 +705,12 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
                   p = magicRes.player;
                   if (magicRes.leveledUp) addLog(`Magic Level up: ${p.skills[SkillType.MAGIC].level}!`, 'gain');
                   addHit(attackSpellName, 'speech', 'player'); 
+                  
+                  if (huntCount > 1) {
+                      addLog(`You hit ${huntCount}x ${monster.name} for ${finalSpellDmg} hitpoints. (Spell: ${attackSpellName})`, 'combat');
+                  } else {
+                      addLog(`You hit ${monster.name} for ${finalSpellDmg} hitpoints. (Spell: ${attackSpellName})`, 'combat');
+                  }
               }
           }
 
@@ -668,11 +722,18 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
                       const runeDmg = calculateRuneDamage(p, runeItem);
                       let finalRuneDmg = runeDmg;
                       if (runeItem.runeType === 'area') finalRuneDmg = runeDmg * huntCount;
+                      
                       totalDamage += finalRuneDmg;
                       p.inventory[runeItem.id]--;
                       p.globalCooldown = now + 2000; 
                       castSpell = true;
                       attackSpellName = runeItem.name;
+                      
+                      if (huntCount > 1) {
+                          addLog(`You hit ${huntCount}x ${monster.name} for ${finalRuneDmg} hitpoints. (Rune: ${runeItem.name})`, 'combat');
+                      } else {
+                          addLog(`You hit ${monster.name} for ${finalRuneDmg} hitpoints. (Rune: ${runeItem.name})`, 'combat');
+                      }
                   }
               }
           }
@@ -680,13 +741,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
           currentMonHp -= totalDamage;
           addHit(totalDamage, 'damage', 'monster'); 
 
-          if (castSpell) {
-             if (huntCount > 1) addLog(`Cast ${attackSpellName} (x${huntCount} targets).`, 'combat');
-             else addLog(`Cast ${attackSpellName} for dmg.`, 'combat');
-          } else {
-             if (Math.random() > 0.7) addLog(`Hit for ${totalDamage}.`, 'combat');
-          }
-
+          // Incoming Damage
           if (currentMonHp > 0) {
             const rawDmgBase = Math.floor(Math.random() * (monster.damageMax - monster.damageMin + 1)) + monster.damageMin;
             let difficultyMult = 1;
@@ -701,7 +756,9 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
 
             if (actualDmg > 0) {
                p.hp -= actualDmg;
-               if (Math.random() > 0.8) addLog(`Perdeu ${actualDmg} HP (x${huntCount} Mobs).`, 'combat');
+               if (Math.random() > 0.8) {
+                   addLog(`You lost ${actualDmg} hitpoints due to an attack by ${monster.name}.`, 'combat');
+               }
                addHit(actualDmg, 'damage', 'player'); 
             } else {
                addHit('Miss', 'miss', 'player'); 

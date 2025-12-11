@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { SHOP_ITEMS, QUESTS } from '../constants';
 import { Item, Player, NpcType, EquipmentSlot, SkillType } from '../types';
-import { Lock, PackageCheck, Coins, ShieldCheck, EyeOff, Search, LayoutGrid, Sword, Crosshair, Sparkles, Scroll, ArrowUp, Shield, Shirt, Footprints, Gem, FlaskConical, Package, HardHat, Columns, ChevronsUp, Layers, Heart, Sun } from 'lucide-react';
+import { Lock, PackageCheck, Coins, ShieldCheck, EyeOff, Search, LayoutGrid, Sword, Crosshair, Sparkles, Scroll, ArrowUp, Shield, Shirt, Footprints, Gem, FlaskConical, Package, HardHat, Columns, ChevronsUp, Layers, Heart, Sun, ShieldAlert } from 'lucide-react';
 import { ItemTooltip } from './ItemTooltip';
 
 interface ShopPanelProps {
@@ -13,6 +13,7 @@ interface ShopPanelProps {
   playerQuests: Player['quests'];
   skippedLoot: string[];
   playerHasBlessing?: boolean;
+  isGm?: boolean;
   onBuyItem: (item: Item, qty: number) => void;
   onSellItem: (item: Item, qty: number) => void;
   onToggleSkippedLoot: (itemId: string) => void;
@@ -38,7 +39,7 @@ const CATEGORIES: { id: ShopCategory, label: string, icon: React.ReactNode }[] =
     { id: 'loot', label: 'Creature Products', icon: <Package size={14} /> },
 ];
 
-export const ShopPanel: React.FC<ShopPanelProps> = ({ playerGold, playerLevel, playerInventory, playerQuests, skippedLoot, playerHasBlessing, onBuyItem, onSellItem, onToggleSkippedLoot, onBuyBlessing }) => {
+export const ShopPanel: React.FC<ShopPanelProps> = ({ playerGold, playerLevel, playerInventory, playerQuests, skippedLoot, playerHasBlessing, isGm, onBuyItem, onSellItem, onToggleSkippedLoot, onBuyBlessing }) => {
   const [activeNpc, setActiveNpc] = useState<NpcType>(NpcType.TRADER);
   const [mode, setMode] = useState<'buy' | 'sell'>('buy');
   const [category, setCategory] = useState<ShopCategory>('all');
@@ -50,6 +51,8 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ playerGold, playerLevel, p
   const [hoverPos, setHoverPos] = useState<{x: number, y: number} | null>(null);
 
   const getNpcStatus = (npc: NpcType) => {
+    if (isGm) return { locked: false, message: 'GM Access' };
+
     if (npc === NpcType.TRADER || npc === NpcType.ABENCOADO) return { locked: false, message: '' };
     
     // Yasir Logic
@@ -149,7 +152,13 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ playerGold, playerLevel, p
         if (activeNpc === NpcType.YASIR) modePass = false; 
         else modePass = soldTo && item.price > 0 && item.type !== 'loot';
     } else {
-        modePass = soldTo && getOwnedQuantity(item) > 0;
+        // SELL MODE
+        // If GM, show all items the NPC buys (sellPrice > 0) regardless of inventory
+        if (isGm) {
+            modePass = soldTo && item.sellPrice > 0;
+        } else {
+            modePass = soldTo && getOwnedQuantity(item) > 0;
+        }
     }
 
     // 3. Category Check
@@ -179,6 +188,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ playerGold, playerLevel, p
              >
                <span>{npc}</span>
                {status.locked && <Lock size={12} className="ml-1 text-red-500" />}
+               {!status.locked && isGm && <span title="GM Access"><ShieldAlert size={10} className="ml-1 text-red-700"/></span>}
              </button>
            );
         })}

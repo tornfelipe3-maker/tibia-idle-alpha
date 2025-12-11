@@ -101,6 +101,7 @@ export interface PlayerSettings {
 
 export interface Player {
   name: string;
+  isGm?: boolean; // GM Flag
   level: number;
   vocation: Vocation;
   currentXp: number;
