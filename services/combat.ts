@@ -1,6 +1,7 @@
 
 import { Player, Spell, Item, EquipmentSlot, SkillType, Vocation } from "../types";
 import { getEffectiveSkill } from "./progression"; 
+import { getAscensionBonusValue } from "./mechanics";
 
 export const calculatePlayerDamage = (player: Player): number => {
   const weapon = player.equipment[EquipmentSlot.HAND_RIGHT]; 
@@ -9,8 +10,14 @@ export const calculatePlayerDamage = (player: Player): number => {
   let skillLevel = getEffectiveSkill(player, SkillType.FIST);
   let factor = 0.06;
 
+  let damage = 0;
+
   if (!weapon) {
     factor = 0.08; 
+    const baseDmg = factor * attackValue * skillLevel + (player.level / 5);
+    const maxDmg = Math.floor(baseDmg);
+    const minDmg = Math.floor(player.level / 5);
+    damage = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
   } else {
     if (weapon.scalingStat === SkillType.MAGIC) {
       skillLevel = getEffectiveSkill(player, SkillType.MAGIC);
@@ -18,7 +25,7 @@ export const calculatePlayerDamage = (player: Player): number => {
       
       const minDmg = (player.level * 0.2) + (skillLevel * 1.5) + (attackValue * 0.5);
       const maxDmg = (player.level * 0.5) + (skillLevel * 2.5) + attackValue;
-      return Math.floor(Math.random() * (maxDmg - minDmg + 1)) + Math.floor(minDmg);
+      damage = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + Math.floor(minDmg);
 
     } else if (weapon.scalingStat === SkillType.DISTANCE) {
       skillLevel = getEffectiveSkill(player, SkillType.DISTANCE);
@@ -32,44 +39,75 @@ export const calculatePlayerDamage = (player: Player): number => {
              
              if (compatible) {
                  attackValue = ammo.attack || 0;
+                 const baseDmg = factor * attackValue * skillLevel + (player.level / 5);
+                 const maxDmg = Math.floor(baseDmg);
+                 const minDmg = Math.floor(player.level / 5);
+                 damage = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
              } else {
                  return 0;
              }
           } else {
               return 0;
           }
+      } else {
+          // Thrown weapons
+          const baseDmg = factor * attackValue * skillLevel + (player.level / 5);
+          const maxDmg = Math.floor(baseDmg);
+          const minDmg = Math.floor(player.level / 5);
+          damage = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
       }
 
     } else if (weapon.scalingStat === SkillType.FIST) {
        skillLevel = getEffectiveSkill(player, SkillType.FIST);
        factor = 0.08;
+       const baseDmg = factor * attackValue * skillLevel + (player.level / 5);
+       const maxDmg = Math.floor(baseDmg);
+       const minDmg = Math.floor(player.level / 5);
+       damage = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
     } else {
       const stat = weapon.scalingStat || SkillType.SWORD;
       skillLevel = getEffectiveSkill(player, stat);
       factor = 0.06;
+      const baseDmg = factor * attackValue * skillLevel + (player.level / 5);
+      const maxDmg = Math.floor(baseDmg);
+      const minDmg = Math.floor(player.level / 5);
+      damage = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
     }
   }
 
-  const baseDmg = factor * attackValue * skillLevel + (player.level / 5);
-  
-  const maxDmg = Math.floor(baseDmg);
-  const minDmg = Math.floor(player.level / 5);
-  
-  return Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
+  // Promotion Bonus: +10% Damage
+  if (player.promoted) {
+      damage = Math.floor(damage * 1.1);
+  }
+
+  // PREY DAMAGE BONUS
+  if (player.activeHuntId) {
+      const prey = player.prey.slots.find(p => p.monsterId === player.activeHuntId);
+      if (prey && prey.bonusType === 'damage') {
+          damage = Math.floor(damage * (1 + (prey.bonusValue / 100)));
+      }
+  }
+
+  // ASCENSION DAMAGE BONUS
+  const ascBonus = getAscensionBonusValue(player, 'damage_boost');
+  if (ascBonus > 0) {
+      damage = Math.floor(damage * (1 + (ascBonus / 100)));
+  }
+
+  return damage;
 };
 
 export const calculateSpellDamage = (player: Player, spell: Spell): number => {
   const magicLevel = getEffectiveSkill(player, SkillType.MAGIC);
+  let damage = 0;
   
   // Specific Logic for Heavy Hitting Spells (Ultimates)
   if (spell.id.includes('gran_mas') || spell.id === 'exori_gran_ico') {
       const minDmg = (player.level * 0.4) + (magicLevel * 8);
       const maxDmg = (player.level * 0.7) + (magicLevel * 14);
-      return Math.floor(Math.random() * (maxDmg - minDmg + 1)) + Math.floor(minDmg);
-  }
-
-  // Knight Attack Spells (Scale better with Level and Weapon Skill, less with ML)
-  if (player.vocation === Vocation.KNIGHT && spell.type === 'attack') {
+      damage = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + Math.floor(minDmg);
+  } else if (player.vocation === Vocation.KNIGHT && spell.type === 'attack') {
+      // Knight Attack Spells (Scale better with Level and Weapon Skill, less with ML)
       const weapon = player.equipment[EquipmentSlot.HAND_RIGHT];
       const weaponSkill = getEffectiveSkill(player, weapon?.scalingStat || SkillType.SWORD);
       const atk = weapon?.attack || 25;
@@ -80,29 +118,48 @@ export const calculateSpellDamage = (player: Player, spell: Spell): number => {
       if (spell.id === 'exori') mult = 1.8;
       
       const dmg = (player.level * 0.2) + (weaponSkill * atk * 0.03 * mult) + (magicLevel * 3);
-      return Math.floor(dmg * (0.8 + Math.random() * 0.4));
-  }
-
-  // Paladin Divine Spells (San)
-  if (player.vocation === Vocation.PALADIN && spell.damageType === 'holy') {
+      damage = Math.floor(dmg * (0.8 + Math.random() * 0.4));
+  } else if (player.vocation === Vocation.PALADIN && spell.damageType === 'holy') {
+      // Paladin Divine Spells (San)
       const dist = getEffectiveSkill(player, SkillType.DISTANCE);
       let mult = 4;
       if (spell.id === 'exevo_mas_san') mult = 6;
       
       const minDmg = (player.level * 0.2) + (magicLevel * mult) + (dist * 0.5);
       const maxDmg = (player.level * 0.3) + (magicLevel * (mult + 2)) + (dist * 0.8);
-      return Math.floor(Math.random() * (maxDmg - minDmg + 1)) + Math.floor(minDmg);
+      damage = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + Math.floor(minDmg);
+  } else {
+      // Standard Mage Formula
+      let multiplier = 2.0; 
+      if (spell.manaCost > 50) multiplier = 3.5;
+      if (spell.manaCost > 200) multiplier = 6.0;
+
+      const minDmg = (player.level * 0.2) + (magicLevel * (multiplier * 0.8));
+      const maxDmg = (player.level * 0.2) + (magicLevel * (multiplier * 1.2));
+
+      damage = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + Math.floor(minDmg);
   }
 
-  // Standard Mage Formula
-  let multiplier = 2.0; 
-  if (spell.manaCost > 50) multiplier = 3.5;
-  if (spell.manaCost > 200) multiplier = 6.0;
+  // Promotion Bonus: +10% Damage
+  if (player.promoted) {
+      damage = Math.floor(damage * 1.1);
+  }
 
-  const minDmg = (player.level * 0.2) + (magicLevel * (multiplier * 0.8));
-  const maxDmg = (player.level * 0.2) + (magicLevel * (multiplier * 1.2));
+  // PREY DAMAGE BONUS
+  if (player.activeHuntId) {
+      const prey = player.prey.slots.find(p => p.monsterId === player.activeHuntId);
+      if (prey && prey.bonusType === 'damage') {
+          damage = Math.floor(damage * (1 + (prey.bonusValue / 100)));
+      }
+  }
 
-  return Math.floor(Math.random() * (maxDmg - minDmg + 1)) + Math.floor(minDmg);
+  // ASCENSION DAMAGE BONUS
+  const ascBonus = getAscensionBonusValue(player, 'damage_boost');
+  if (ascBonus > 0) {
+      damage = Math.floor(damage * (1 + (ascBonus / 100)));
+  }
+
+  return damage;
 };
 
 export const calculateRuneDamage = (player: Player, item: Item): number => {
@@ -117,7 +174,28 @@ export const calculateRuneDamage = (player: Player, item: Item): number => {
   const minDmg = (player.level * 0.2) + (magicLevel * (multiplier * 0.8));
   const maxDmg = (player.level * 0.2) + (magicLevel * (multiplier * 1.2));
   
-  return Math.floor(Math.random() * (maxDmg - minDmg + 1)) + Math.floor(minDmg);
+  let damage = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + Math.floor(minDmg);
+
+  // Promotion Bonus: +10% Damage
+  if (player.promoted) {
+      damage = Math.floor(damage * 1.1);
+  }
+
+  // PREY DAMAGE BONUS
+  if (player.activeHuntId) {
+      const prey = player.prey.slots.find(p => p.monsterId === player.activeHuntId);
+      if (prey && prey.bonusType === 'damage') {
+          damage = Math.floor(damage * (1 + (prey.bonusValue / 100)));
+      }
+  }
+
+  // ASCENSION DAMAGE BONUS
+  const ascBonus = getAscensionBonusValue(player, 'damage_boost');
+  if (ascBonus > 0) {
+      damage = Math.floor(damage * (1 + (ascBonus / 100)));
+  }
+
+  return damage;
 };
 
 export const calculateSpellHealing = (player: Player, spell: Spell): number => {
@@ -170,5 +248,15 @@ export const calculatePlayerDefense = (player: Player): number => {
   const shieldBlock = Math.random() * (shieldDef * (shieldingSkill * 0.05));
   const armorReduction = Math.random() * totalArmor * 0.7 + (totalArmor * 0.3);
   
-  return Math.floor(armorReduction + shieldBlock);
+  let finalDef = Math.floor(armorReduction + shieldBlock);
+
+  // PREY DEFENSE BONUS
+  if (player.activeHuntId) {
+      const prey = player.prey.slots.find(p => p.monsterId === player.activeHuntId);
+      if (prey && prey.bonusType === 'defense') {
+          finalDef = Math.floor(finalDef * (1 + (prey.bonusValue / 100)));
+      }
+  }
+
+  return finalDef;
 };

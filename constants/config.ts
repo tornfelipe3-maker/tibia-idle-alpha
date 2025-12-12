@@ -72,6 +72,7 @@ export const INITIAL_PLAYER_STATS: Player = {
     name: '',
     level: 1,
     vocation: Vocation.NONE,
+    promoted: false,
     currentXp: 0,
     maxXp: getXpForLevel(2),
     hp: 150,
@@ -84,6 +85,7 @@ export const INITIAL_PLAYER_STATS: Player = {
     lastSaveTime: Date.now(),
     activeHuntId: null,
     activeHuntCount: 1,
+    activeHuntStartTime: 0, // Initialize timestamp
     activeTrainingSkill: null,
     equipment: {},
     inventory: {},
@@ -118,4 +120,20 @@ export const INITIAL_PLAYER_STATS: Player = {
     taskOptions: [],
     skippedLoot: [],
     hasBlessing: false,
+    prey: {
+        slots: [
+            { monsterId: null, bonusType: 'xp', bonusValue: 0 },
+            { monsterId: null, bonusType: 'loot', bonusValue: 0 },
+            { monsterId: null, bonusType: 'damage', bonusValue: 0 }
+        ],
+        nextFreeReroll: 0
+    },
+    soulPoints: 0,
+    ascension: {
+        gold_boost: 0,
+        damage_boost: 0,
+        loot_boost: 0,
+        boss_cd: 0,
+        soul_gain: 0
+    }
 };

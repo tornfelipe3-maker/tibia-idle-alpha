@@ -1,14 +1,18 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Player, LogEntry, Vocation, SkillType, EquipmentSlot, PlayerSettings, Boss, HuntingTask, HitSplat, Spell, Item } from '../types';
+import { Player, LogEntry, Vocation, SkillType, EquipmentSlot, PlayerSettings, Boss, HuntingTask, HitSplat, Spell, Item, AscensionPerk } from '../types';
 import { MONSTERS, BOSSES, SHOP_ITEMS, QUESTS, getXpForLevel, REGEN_RATES, SPELLS, MAX_STAMINA, INITIAL_PLAYER_STATS } from '../constants';
-import { calculatePlayerDamage, calculatePlayerDefense, processSkillTraining, calculateSpellDamage, calculateSpellHealing, calculateLootDrop, generateTaskOptions, getXpStageMultiplier, calculateRuneDamage, getEffectiveSkill, StorageService } from '../services';
+import { calculatePlayerDamage, calculatePlayerDefense, processSkillTraining, calculateSpellDamage, calculateSpellHealing, calculateLootDrop, generateTaskOptions, getXpStageMultiplier, calculateRuneDamage, getEffectiveSkill, StorageService, generatePreyCard, calculateSoulPointsToGain, getAscensionUpgradeCost, getAscensionBonusValue } from '../services';
 
 // Helper to extract "Exura" from "Light Healing (Exura)"
 const getSpellIncantation = (name: string) => {
     const match = name.match(/\((.*?)\)/);
     return match ? match[1] : name;
 };
+
+// Time Limits
+const MAX_HUNT_ONLINE_MS = 6 * 60 * 60 * 1000; // 6 Hours
+const MAX_HUNT_OFFLINE_SEC = 4 * 3600; // 4 Hours
 
 export const useGameEngine = (initialPlayer: Player | null, currentAccount: string | null, isAuthenticated: boolean) => {
   // --- STATE ---
@@ -28,11 +32,21 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
   const monsterHpRef = useRef(monsterHp);
   const saveIntervalRef = useRef<number>(0);
 
-  // Sync refs with state
+  // Sync refs with state - Keep this for external updates, but internal updates will sync manually
   useEffect(() => { playerRef.current = player; }, [player]);
   useEffect(() => { activeHuntRef.current = activeHuntId; }, [activeHuntId]);
   useEffect(() => { activeTrainingRef.current = activeTrainingSkill; }, [activeTrainingSkill]);
   useEffect(() => { monsterHpRef.current = monsterHp; }, [monsterHp]);
+
+  // --- SAFE STATE UPDATER ---
+  // Updates React State AND Ref immediately to prevent Game Loop overwrites
+  const updatePlayerState = useCallback((updater: (prev: Player) => Player) => {
+      setPlayer(prev => {
+          const newState = updater(prev);
+          playerRef.current = newState; // Sync Ref immediately
+          return newState;
+      });
+  }, []);
 
   // --- HELPERS ---
   const addLog = useCallback((message: string, type: LogEntry['type'] = 'info') => {
@@ -80,6 +94,32 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
       if (loadedPlayer.settings.autoAttackRune === undefined) loadedPlayer.settings.autoAttackRune = false;
       if (loadedPlayer.settings.selectedRuneId === undefined) loadedPlayer.settings.selectedRuneId = '';
       if (loadedPlayer.hasBlessing === undefined) loadedPlayer.hasBlessing = false;
+      if (loadedPlayer.promoted === undefined) loadedPlayer.promoted = false;
+      if (loadedPlayer.activeHuntStartTime === undefined) loadedPlayer.activeHuntStartTime = 0;
+      
+      // Prey Init
+      if (loadedPlayer.prey === undefined) {
+          loadedPlayer.prey = {
+              slots: [
+                  { monsterId: null, bonusType: 'xp', bonusValue: 0 },
+                  { monsterId: null, bonusType: 'loot', bonusValue: 0 },
+                  { monsterId: null, bonusType: 'damage', bonusValue: 0 }
+              ],
+              nextFreeReroll: 0
+          };
+      }
+
+      // Ascension Init
+      if (loadedPlayer.soulPoints === undefined) loadedPlayer.soulPoints = 0;
+      if (loadedPlayer.ascension === undefined) {
+          loadedPlayer.ascension = {
+              gold_boost: 0,
+              damage_boost: 0,
+              loot_boost: 0,
+              boss_cd: 0,
+              soul_gain: 0
+          };
+      }
       
       const now = Date.now();
       const lastSave = loadedPlayer.lastSaveTime || now;
@@ -89,11 +129,10 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
 
       if (diffSeconds > 60) {
           let logMsg = `You were offline for ${(diffSeconds / 3600).toFixed(1)} hours. `;
-          const MAX_HUNT_OFFLINE = 4 * 3600; 
           const MAX_TRAIN_OFFLINE = 12 * 3600; 
 
           if (loadedPlayer.activeHuntId) {
-              const effectiveTime = Math.min(diffSeconds, MAX_HUNT_OFFLINE);
+              const effectiveTime = Math.min(diffSeconds, MAX_HUNT_OFFLINE_SEC);
               const monster = MONSTERS.find(m => m.id === loadedPlayer.activeHuntId);
               const huntCount = loadedPlayer.activeHuntCount || 1;
               
@@ -101,14 +140,47 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
                   const kills = Math.floor(effectiveTime / 10);
                   const stageMult = getXpStageMultiplier(loadedPlayer.level);
                   const efficiency = Math.max(0.1, 1 - ((huntCount - 1) * 0.1));
-                  const totalXp = kills * monster.exp * stageMult * huntCount * efficiency;
-                  const totalGold = kills * ((monster.minGold + monster.maxGold)/2) * huntCount * efficiency;
+                  
+                  // Prey XP Bonus Calculation for Offline
+                  const activePrey = modifiedPlayer.prey.slots.find(s => s.monsterId === monster.id);
+                  let preyMult = 1;
+                  if (activePrey && activePrey.bonusType === 'xp') {
+                      preyMult = 1 + (activePrey.bonusValue / 100);
+                  }
+
+                  const totalXp = kills * monster.exp * stageMult * huntCount * efficiency * preyMult;
+                  
+                  // Loot Bonus for Offline (Simplified gold calculation)
+                  let lootMult = 1;
+                  if (activePrey && activePrey.bonusType === 'loot') {
+                      lootMult += (activePrey.bonusValue / 100);
+                  }
+                  // Ascension Loot Bonus
+                  lootMult += (getAscensionBonusValue(modifiedPlayer, 'loot_boost') / 100);
+                  
+                  // Ascension Gold Bonus
+                  const goldAscBonus = 1 + (getAscensionBonusValue(modifiedPlayer, 'gold_boost') / 100);
+
+                  const totalGold = kills * ((monster.minGold + monster.maxGold)/2) * huntCount * efficiency * lootMult * goldAscBonus;
                   
                   modifiedPlayer.currentXp += totalXp;
                   modifiedPlayer.gold += Math.floor(totalGold);
                   logMsg += `Hunted ${monster.name} (x${huntCount}) (~${kills} rounds). Gained ${Math.floor(totalXp).toLocaleString()} XP and ${Math.floor(totalGold).toLocaleString()} Gold.`;
               }
-              setActiveHuntId(loadedPlayer.activeHuntId); 
+
+              // --- OFFLINE LIMIT LOGIC ---
+              if (diffSeconds >= MAX_HUNT_OFFLINE_SEC) {
+                  // Reached 4h limit, stop hunting
+                  setActiveHuntId(null);
+                  modifiedPlayer.activeHuntId = null;
+                  modifiedPlayer.activeHuntStartTime = 0;
+                  logMsg += " Hunt stopped (4h offline limit reached).";
+              } else {
+                  // Within limit, continue hunting, but reset start time to now (new online session)
+                  setActiveHuntId(loadedPlayer.activeHuntId);
+                  modifiedPlayer.activeHuntStartTime = Date.now();
+              }
+
           } else if (loadedPlayer.activeTrainingSkill) {
               const effectiveTime = Math.min(diffSeconds, MAX_TRAIN_OFFLINE);
               const skill = modifiedPlayer.activeTrainingSkill;
@@ -119,13 +191,20 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
       } else {
           setActiveHuntId(loadedPlayer.activeHuntId);
           setActiveTrainingSkill(loadedPlayer.activeTrainingSkill);
+          // If hunting, just ensure start time is valid, otherwise set to now to be safe
+          if (loadedPlayer.activeHuntId && !loadedPlayer.activeHuntStartTime) {
+              modifiedPlayer.activeHuntStartTime = Date.now();
+          }
       }
       setPlayer(modifiedPlayer);
+      playerRef.current = modifiedPlayer; // Sync ref immediately
   };
 
   // --- SAVE SYSTEM ---
   const saveGame = useCallback(async () => {
      if (!currentAccount || !isAuthenticated) return;
+     
+     // Use ref to get latest state for saving
      const stateToSave: Player = {
         ...playerRef.current,
         activeHuntId: activeHuntRef.current,
@@ -139,7 +218,8 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
 
   useEffect(() => {
     if (isAuthenticated) {
-        saveIntervalRef.current = window.setInterval(saveGame, 5000); 
+        // CHANGED: Autosave every 60 seconds to prevent lag spikes
+        saveIntervalRef.current = window.setInterval(saveGame, 60000); 
         const handleBeforeUnload = () => saveGame();
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => {
@@ -177,7 +257,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
     if (currentHuntId) {
         const boss = BOSSES.find(b => b.id === currentHuntId);
         if (boss && boss.cooldownSeconds) {
-            setPlayer(prev => ({
+            updatePlayerState(prev => ({
                 ...prev,
                 bossCooldowns: { ...prev.bossCooldowns, [boss.id]: Date.now() + (boss.cooldownSeconds * 1000) }
             }));
@@ -188,7 +268,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
     setActiveHuntId(null);
     setActiveTrainingSkill(null);
     
-    setPlayer(prev => {
+    updatePlayerState(prev => {
       if (prev.isGm) {
           addLog('GM nunca morre de verdade. Recuperando HP.', 'info');
           return { ...prev, hp: prev.maxHp, mana: prev.maxMana };
@@ -229,15 +309,101 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
         currentXp: Math.max(0, prev.currentXp - lostXp),
         gold: Math.max(0, prev.gold - lostGold),
         activeHuntCount: 1,
+        activeHuntStartTime: 0,
         skills: updatedSkills,
         hasBlessing: false 
       };
     });
   };
 
+  // --- ASCENSION ACTIONS ---
+  const handleAscend = () => {
+      const pointsToGain = calculateSoulPointsToGain(player);
+      if (pointsToGain <= 0) {
+          addLog("You need Level 25 to enter the Soul War.", 'danger');
+          return;
+      }
+
+      // Stop activities
+      setActiveHuntId(null);
+      setActiveTrainingSkill(null);
+
+      updatePlayerState(prev => {
+          const p = { ...prev };
+          
+          // Reset Level to 8
+          p.level = 8;
+          p.currentXp = 0;
+          p.maxXp = getXpForLevel(9); // Next level is 9
+
+          // Reset Stats to Level 8 Baseline based on Vocation
+          let baseHp = 185;
+          let baseMana = 35;
+          
+          // Using standard tibia formula approximation for lvl 8
+          if (p.vocation === Vocation.KNIGHT) { baseHp = 205; baseMana = 25; }
+          else if (p.vocation === Vocation.PALADIN) { baseHp = 185; baseMana = 35; }
+          else if (p.vocation === Vocation.SORCERER || p.vocation === Vocation.DRUID) { baseHp = 145; baseMana = 55; }
+          else if (p.vocation === Vocation.MONK) { baseHp = 190; baseMana = 30; }
+
+          p.maxHp = baseHp;
+          p.hp = baseHp;
+          p.maxMana = baseMana;
+          p.mana = baseMana;
+
+          // Award Soul Points
+          p.soulPoints = (p.soulPoints || 0) + pointsToGain;
+
+          // --- HARD RESET (Items & Gold) ---
+          p.gold = 0;
+          p.bankGold = 0;
+          p.inventory = {};
+          p.depot = {};
+          p.equipment = {};
+          p.quests = {};
+          p.purchasedSpells = [];
+          p.promoted = false;
+          p.hasBlessing = false;
+          p.activeTask = null;
+          p.taskOptions = generateTaskOptions(8);
+          p.bossCooldowns = {};
+          p.activeHuntStartTime = 0;
+
+          // Give Starter Set (Coat + Club) to prevent softlock
+          const coat = SHOP_ITEMS.find(i => i.id === 'coat');
+          const club = SHOP_ITEMS.find(i => i.id === 'club');
+          if (coat) p.equipment[EquipmentSlot.BODY] = { ...coat, count: 1 };
+          if (club) p.equipment[EquipmentSlot.HAND_RIGHT] = { ...club, count: 1 };
+
+          addLog(`You have transcended! Level reset to 8. Items and Gold lost. Skills kept. Gained ${pointsToGain} Soul Points.`, 'gain');
+          addHit("ASCENDED", 'speech', 'player');
+
+          return p;
+      });
+  };
+
+  const handleBuyAscensionUpgrade = (perk: AscensionPerk) => {
+      const currentLevel = player.ascension?.[perk] || 0;
+      const cost = getAscensionUpgradeCost(currentLevel);
+
+      if (player.soulPoints >= cost) {
+          updatePlayerState(prev => ({
+              ...prev,
+              soulPoints: prev.soulPoints - cost,
+              ascension: {
+                  ...prev.ascension,
+                  [perk]: (prev.ascension?.[perk] || 0) + 1
+              }
+          }));
+          addLog(`Upgraded ${perk.replace('_', ' ')} to level ${currentLevel + 1}.`, 'gain');
+      } else {
+          addLog("Not enough Soul Points.", 'danger');
+      }
+  };
+
   // --- GM ACTIONS ---
   const gmLevelUp = () => {
-      setPlayer(prev => {
+      updatePlayerState(prev => {
           const xpNeeded = prev.maxXp - prev.currentXp;
           let p = { ...prev, currentXp: prev.currentXp + xpNeeded };
           p = handleLevelUp(p);
@@ -247,20 +413,86 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
   };
 
   const gmAddGold = () => {
-      setPlayer(prev => {
+      updatePlayerState(prev => {
           addLog('GM Power: Added 1,000,000 Gold.', 'gain');
           return { ...prev, gold: prev.gold + 1000000 };
       });
   };
 
   const gmSkillUp = () => {
-      setPlayer(prev => {
+      updatePlayerState(prev => {
           const newSkills = { ...prev.skills };
           Object.keys(newSkills).forEach(k => {
               newSkills[k as SkillType].level += 5; // Add 5 levels at a time
           });
           addLog('GM Power: All Skills +5!', 'gain');
           return { ...prev, skills: newSkills };
+      });
+  };
+
+  // --- QUEST ACTIONS ---
+  const handleClaimQuestReward = (questId: string) => {
+      const quest = QUESTS.find(q => q.id === questId);
+      if (!quest) return;
+
+      const playerQuest = player.quests[questId] || { kills: 0, completed: false };
+      if (playerQuest.completed) return;
+
+      // Check requirements
+      const killsMet = quest.requiredKills ? playerQuest.kills >= quest.requiredKills : true;
+      const levelMet = quest.requiredLevel ? player.level >= quest.requiredLevel : true;
+
+      if (!killsMet || !levelMet) {
+          addLog("Quest requirements not met.", 'danger');
+          return;
+      }
+
+      updatePlayerState(prev => {
+          const p = { ...prev };
+          
+          // Mark completed
+          if (!p.quests[questId]) p.quests[questId] = { kills: 0, completed: true };
+          else p.quests[questId].completed = true;
+
+          // Give Rewards
+          if (quest.rewardGold) {
+              p.gold += quest.rewardGold;
+              addLog(`Quest Completed! Received ${quest.rewardGold} gp.`, 'gain');
+          }
+          
+          if (quest.rewardExp) {
+              p.currentXp += quest.rewardExp;
+              const leveled = handleLevelUp(p);
+              // Merge leveled stats back to p
+              p.level = leveled.level;
+              p.currentXp = leveled.currentXp;
+              p.maxXp = leveled.maxXp;
+              p.hp = leveled.hp;
+              p.maxHp = leveled.maxHp;
+              p.mana = leveled.mana;
+              p.maxMana = leveled.maxMana;
+              addLog(`Received ${quest.rewardExp} experience.`, 'gain');
+          }
+
+          if (quest.rewardItems) {
+              quest.rewardItems.forEach(reward => {
+                  const itemDef = SHOP_ITEMS.find(i => i.id === reward.itemId);
+                  // Check if item exists in constants
+                  if(!itemDef) {
+                      if (reward.itemId === 'copper_shield') {
+                          p.inventory['plate_shield'] = (p.inventory['plate_shield'] || 0) + 1;
+                      }
+                      return; 
+                  }
+                  
+                  // Add to inventory
+                  p.inventory[reward.itemId] = (p.inventory[reward.itemId] || 0) + reward.count;
+                  addLog(`Received ${reward.count}x ${itemDef.name}.`, 'loot');
+              });
+          }
+
+          addHit('QUEST!', 'speech', 'player');
+          return p;
       });
   };
 
@@ -274,12 +506,20 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
       gmAddGold,
       gmSkillUp,
 
+      // Ascension
+      handleAscend,
+      handleBuyAscensionUpgrade,
+
+      // Quests
+      handleClaimQuestReward,
+
       startHunt: (monsterId: string, isBoss: boolean = false, count: number = 1) => {
         if (activeTrainingSkill) setActiveTrainingSkill(null);
         const m = isBoss ? BOSSES.find(x => x.id === monsterId) : MONSTERS.find(x => x.id === monsterId);
         if (m) {
           setMonsterHp(m.maxHp * count);
-          setPlayer(prev => ({ ...prev, activeHuntCount: count }));
+          // NEW: Initialize hunt start time
+          updatePlayerState(prev => ({ ...prev, activeHuntCount: count, activeHuntStartTime: Date.now() }));
           setActiveHuntId(monsterId);
           if (count > 1) addLog(`Caçando grupo de ${count}x ${m.name}. Cuidado!`, 'danger');
           else addLog(`Caçando ${m.name}.`, 'info');
@@ -288,6 +528,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
 
       stopHunt: () => {
         setActiveHuntId(null);
+        updatePlayerState(prev => ({ ...prev, activeHuntStartTime: 0 }));
         addLog('Parou de caçar.', 'info');
       },
 
@@ -303,19 +544,79 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
       },
 
       updateSettings: (newSettings: PlayerSettings) => {
-        setPlayer(prev => ({ ...prev, settings: newSettings }));
+        updatePlayerState(prev => ({ ...prev, settings: newSettings }));
       },
 
       chooseVocation: (vocation: Vocation) => {
-        setPlayer(prev => ({ ...prev, vocation }));
+        updatePlayerState(prev => ({ ...prev, vocation }));
         addLog(`Você agora é um ${vocation}!`, 'gain');
       },
 
       confirmName: (name: string) => {
         if (name.trim().length > 0) {
-          setPlayer(prev => ({ ...prev, name: name }));
+          updatePlayerState(prev => ({ ...prev, name: name }));
           addLog(`Bem-vindo, ${name}!`, 'info');
         }
+      },
+
+      promotePlayer: () => {
+          if (player.promoted) {
+              addLog("You are already promoted!", 'info');
+              return;
+          }
+          if (player.gold >= 20000) {
+              updatePlayerState(prev => ({
+                  ...prev,
+                  gold: prev.gold - 20000,
+                  promoted: true
+              }));
+              addLog("Hail to the King! You have been promoted!", 'gain');
+              addHit("PROMOTED!", 'heal', 'player');
+          } else {
+              addLog("You do not have 20,000 gold.", 'danger');
+          }
+      },
+
+      // PREY ACTIONS
+      rerollPrey: (slotIndex: number) => {
+          const now = Date.now();
+          const rerollCost = player.level * 100;
+          const isFree = now > player.prey.nextFreeReroll;
+
+          // If free, we reroll ALL slots
+          if (isFree) {
+              const newSlots = [generatePreyCard(), generatePreyCard(), generatePreyCard()];
+              updatePlayerState(prev => ({
+                  ...prev,
+                  prey: {
+                      ...prev.prey,
+                      slots: newSlots,
+                      nextFreeReroll: now + (20 * 60 * 60 * 1000) // 20 Hours
+                  }
+              }));
+              addLog("Free Daily Reroll used! All prey cards updated.", 'info');
+          } else {
+              // Paid reroll only targets ONE slot
+              if (player.gold < rerollCost) {
+                  addLog(`Need ${rerollCost} gold to reroll.`, 'danger');
+                  return;
+              }
+              
+              const newCard = generatePreyCard();
+              updatePlayerState(prev => {
+                  const newSlots = [...prev.prey.slots];
+                  newSlots[slotIndex] = newCard;
+                  return {
+                      ...prev,
+                      gold: prev.gold - rerollCost,
+                      prey: {
+                          ...prev.prey,
+                          slots: newSlots
+                      }
+                  };
+              });
+              addLog(`Rerolled slot ${slotIndex + 1} for ${rerollCost} gp.`, 'info');
+          }
       },
 
       // Inventory Actions
@@ -331,7 +632,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
             return;
         }
 
-        setPlayer(prev => {
+        updatePlayerState(prev => {
           const p = { ...prev };
           const isStackable = item.slot === EquipmentSlot.AMMO || (item.scalingStat === SkillType.DISTANCE && !item.weaponType);
           const quantityToEquip = p.inventory[itemId] || 0;
@@ -365,7 +666,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
       },
 
       handleUnequipItem: (slot: EquipmentSlot) => {
-          setPlayer(prev => {
+          updatePlayerState(prev => {
               const p = { ...prev };
               const item = p.equipment[slot];
               if (item) {
@@ -379,7 +680,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
       },
 
       handleDepositItem: (itemId: string) => {
-        setPlayer(prev => {
+        updatePlayerState(prev => {
           const p = { ...prev };
           if ((p.inventory[itemId] || 0) > 0) {
             p.inventory[itemId]--;
@@ -391,7 +692,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
       },
 
       handleWithdrawItem: (itemId: string) => {
-        setPlayer(prev => {
+        updatePlayerState(prev => {
           const p = { ...prev };
           if ((p.depot[itemId] || 0) > 0) {
             p.depot[itemId]--;
@@ -403,7 +704,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
       },
 
       handleDiscardItem: (itemId: string) => {
-          setPlayer(prev => {
+          updatePlayerState(prev => {
               const p = { ...prev };
               if ((p.inventory[itemId] || 0) > 0) {
                   p.inventory[itemId]--;
@@ -414,7 +715,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
       },
 
       handleToggleSkippedLoot: (itemId: string) => {
-          setPlayer(prev => {
+          updatePlayerState(prev => {
               const p = { ...prev };
               if (p.skippedLoot.includes(itemId)) {
                   p.skippedLoot = p.skippedLoot.filter(id => id !== itemId);
@@ -430,7 +731,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
       buyItem: (item: Item, quantity: number = 1) => {
         const totalCost = item.price * quantity;
         if (player.gold >= totalCost) {
-          setPlayer(prev => {
+          updatePlayerState(prev => {
             const newState = { ...prev, gold: prev.gold - totalCost };
             const currentQty = newState.inventory[item.id] || 0;
             newState.inventory = { ...newState.inventory, [item.id]: currentQty + quantity };
@@ -443,7 +744,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
       sellItem: (item: Item, quantity: number = 1) => {
         if ((player.inventory[item.id] || 0) >= quantity) {
            const totalValue = item.sellPrice * quantity;
-           setPlayer(prev => {
+           updatePlayerState(prev => {
               const newState = { ...prev, gold: prev.gold + totalValue };
               newState.inventory[item.id] -= quantity;
               addLog(`Vendeu ${quantity}x ${item.name} por ${totalValue}gp.`, 'info');
@@ -460,7 +761,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
           const getBlessingCost = (level: number) => level <= 30 ? 2000 : level >= 120 ? 20000 : 2000 + (level - 30) * 200;
           const cost = getBlessingCost(player.level);
           if (player.gold >= cost) {
-              setPlayer(prev => ({ ...prev, gold: prev.gold - cost, hasBlessing: true }));
+              updatePlayerState(prev => ({ ...prev, gold: prev.gold - cost, hasBlessing: true }));
               addLog("You have been blessed! Death penalties reduced by 95%.", 'gain');
               addHit("BLESSED!", 'heal', 'player');
           } else {
@@ -470,7 +771,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
 
       handleBuySpell: (spell: Spell) => {
           if (player.gold >= spell.price) {
-              setPlayer(prev => ({
+              updatePlayerState(prev => ({
                   ...prev,
                   gold: prev.gold - spell.price,
                   purchasedSpells: [...prev.purchasedSpells, spell.id]
@@ -484,32 +785,32 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
 
       handleDepositGold: (amount: number) => {
         if (player.gold >= amount) {
-            setPlayer(prev => ({ ...prev, gold: prev.gold - amount, bankGold: prev.bankGold + amount }));
+            updatePlayerState(prev => ({ ...prev, gold: prev.gold - amount, bankGold: prev.bankGold + amount }));
             addLog(`Deposited ${amount.toLocaleString()} gp.`, 'info');
         }
       },
 
       handleWithdrawGold: (amount: number) => {
         if (player.bankGold >= amount) {
-            setPlayer(prev => ({ ...prev, gold: prev.gold + amount, bankGold: prev.bankGold - amount }));
+            updatePlayerState(prev => ({ ...prev, gold: prev.gold + amount, bankGold: prev.bankGold - amount }));
             addLog(`Withdrew ${amount.toLocaleString()} gp.`, 'info');
         }
       },
 
       handleSelectTask: (task: HuntingTask) => {
-        setPlayer(prev => ({ ...prev, activeTask: task, taskOptions: [] }));
+        updatePlayerState(prev => ({ ...prev, activeTask: task, taskOptions: [] }));
         addLog(`Task Accepted: Kill ${task.killsRequired} ${MONSTERS.find(m => m.id === task.monsterId)?.name}!`, 'gain');
       },
 
       handleCancelTask: () => {
-        setPlayer(prev => ({ ...prev, activeTask: null, taskOptions: generateTaskOptions(prev.level) }));
+        updatePlayerState(prev => ({ ...prev, activeTask: null, taskOptions: generateTaskOptions(prev.level) }));
         addLog('Task Abandoned.', 'info');
       },
 
       handleRerollTasks: () => {
         const cost = player.level * 50;
         if (player.gold >= cost) {
-           setPlayer(prev => ({ ...prev, gold: prev.gold - cost, taskOptions: generateTaskOptions(prev.level) }));
+           updatePlayerState(prev => ({ ...prev, gold: prev.gold - cost, taskOptions: generateTaskOptions(prev.level) }));
            addLog('Tasks Rerolled.', 'info');
         }
       },
@@ -523,7 +824,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
            p.activeTask = null;
            p.taskOptions = generateTaskOptions(p.level);
            p = handleLevelUp(p);
-           setPlayer(p);
+           updatePlayerState(() => p);
            addLog(`Task Complete! Rewards: ${xp.toLocaleString()} XP, ${gold.toLocaleString()} Gold.`, 'gain');
         }
       }
@@ -535,12 +836,33 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
     const tickRate = 666; 
 
     const interval = setInterval(() => {
+      // CRITICAL: We fetch state from Ref to ensure we have the very latest from any user actions
+      // that might have happened in the last few ms.
+      // And we use updatePlayerState to commit the loop changes atomically.
       let p = { ...playerRef.current };
+      
       const huntId = activeHuntRef.current;
       const huntCount = p.activeHuntCount || 1;
       const trainSkill = activeTrainingRef.current;
-      const regen = REGEN_RATES[p.vocation] || REGEN_RATES[Vocation.NONE];
+      const baseRegen = REGEN_RATES[p.vocation] || REGEN_RATES[Vocation.NONE];
       const now = Date.now();
+
+      // --- ONLINE HUNT LIMIT CHECK ---
+      if (huntId && p.activeHuntStartTime > 0 && (now - p.activeHuntStartTime > MAX_HUNT_ONLINE_MS)) {
+          setActiveHuntId(null);
+          p.activeHuntId = null;
+          p.activeHuntStartTime = 0;
+          addLog("Exhausted! You have stopped hunting after 6 hours online.", 'danger');
+          setPlayer(p);
+          return; // Stop the tick execution for hunting
+      }
+
+      // Apply Promotion Regen Bonus (80% increase)
+      const regenMultiplier = p.promoted ? 1.8 : 1.0;
+      const regen = {
+          hp: baseRegen.hp * regenMultiplier,
+          mana: baseRegen.mana * regenMultiplier
+      };
 
       // Stamina
       if (huntId) {
@@ -775,14 +1097,32 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
             const goldDrop = goldDropBase * huntCount;
             const staminaMultiplier = p.stamina > 0 ? 1.5 : 1.0;
             const stageMult = getXpStageMultiplier(p.level);
-            const xpGained = Math.floor(monster.exp * stageMult * staminaMultiplier * huntCount);
+            
+            // PREY XP BONUS
+            let preyXpMult = 1;
+            const activePrey = p.prey.slots.find(s => s.monsterId === monster.id);
+            if (activePrey && activePrey.bonusType === 'xp') {
+                preyXpMult = 1 + (activePrey.bonusValue / 100);
+            }
+
+            const xpGained = Math.floor(monster.exp * stageMult * staminaMultiplier * huntCount * preyXpMult);
             
             p.currentXp += xpGained;
-            p.gold += goldDrop;
+            // Ascension Gold Bonus
+            const ascGoldBonus = 1 + (getAscensionBonusValue(p, 'gold_boost') / 100);
+            p.gold += Math.floor(goldDrop * ascGoldBonus);
             
+            // PREY LOOT BONUS
+            let lootBonus = 0;
+            if (activePrey && activePrey.bonusType === 'loot') {
+                lootBonus += activePrey.bonusValue;
+            }
+            // ASCENSION LOOT BONUS
+            lootBonus += getAscensionBonusValue(p, 'loot_boost');
+
             let combinedLoot: {[key:string]: number} = {};
             for(let i=0; i<huntCount; i++) {
-                const loot = calculateLootDrop(monster);
+                const loot = calculateLootDrop(monster, lootBonus);
                 Object.entries(loot).forEach(([itemId, qty]) => { combinedLoot[itemId] = (combinedLoot[itemId] || 0) + qty; });
             }
 
@@ -794,8 +1134,8 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
                lootMsg += `, ${qty}x ${itemName}`;
             });
 
-            if (lootMsg) addLog(`Loot x${huntCount} ${monster.name}: ${goldDrop} gp${lootMsg}. (${xpGained} xp)`, 'loot');
-            else addLog(`Loot x${huntCount} ${monster.name}: ${goldDrop} gp. (${xpGained} xp)`, 'loot');
+            if (lootMsg) addLog(`Loot x${huntCount} ${monster.name}: ${Math.floor(goldDrop * ascGoldBonus)} gp${lootMsg}. (${xpGained} xp)`, 'loot');
+            else addLog(`Loot x${huntCount} ${monster.name}: ${Math.floor(goldDrop * ascGoldBonus)} gp. (${xpGained} xp)`, 'loot');
 
             if (p.activeTask && p.activeTask.monsterId === monster.id && !p.activeTask.isComplete) {
               p.activeTask.killsCurrent += huntCount; 
@@ -805,20 +1145,32 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
               }
             }
 
+            // Quest Logic Update - Check kill requirements
             const relevantQuests = QUESTS.filter(q => q.targetMonsterId === monster.id);
             relevantQuests.forEach(q => {
                if (!p.quests[q.id]) p.quests[q.id] = { kills: 0, completed: false };
+               
                if (!p.quests[q.id].completed) {
-                  p.quests[q.id].kills += huntCount;
-                  if (p.quests[q.id].kills >= q.requiredKills) {
-                     p.quests[q.id].completed = true;
-                     addLog(`QUEST COMPLETED: ${q.name}! Access to ${q.rewardNpcAccess} unlocked.`, 'gain');
+                  // Only increment if kill count is below requirement
+                  if (q.requiredKills && p.quests[q.id].kills < q.requiredKills) {
+                      p.quests[q.id].kills += huntCount;
+                      
+                      // Cap at required
+                      if (p.quests[q.id].kills >= q.requiredKills) {
+                          p.quests[q.id].kills = q.requiredKills;
+                          addLog(`Quest Objective Complete: ${q.name}! Go to Quest Log to claim reward.`, 'gain');
+                      }
                   }
                }
             });
 
             if ((monster as Boss).cooldownSeconds) {
-               p.bossCooldowns[monster.id] = Date.now() + ((monster as Boss).cooldownSeconds * 1000);
+               // Apply Ascension Cooldown Reduction
+               const cdReduct = getAscensionBonusValue(p, 'boss_cd');
+               const duration = (monster as Boss).cooldownSeconds * 1000;
+               const finalDuration = duration * (1 - (cdReduct / 100));
+               
+               p.bossCooldowns[monster.id] = Date.now() + finalDuration;
                setActiveHuntId(null);
                addLog(`${monster.name} derrotado! Volte amanhã.`, 'gain');
             }
@@ -842,7 +1194,7 @@ export const useGameEngine = (initialPlayer: Player | null, currentAccount: stri
   // Task Options Generator Check
   useEffect(() => {
     if (isAuthenticated && player.level > 1 && player.taskOptions.length === 0 && !player.activeTask) {
-       setPlayer(prev => ({ ...prev, taskOptions: generateTaskOptions(prev.level) }));
+       updatePlayerState(prev => ({ ...prev, taskOptions: generateTaskOptions(prev.level) }));
     }
   }, [player.level, player.taskOptions.length, player.activeTask, isAuthenticated]);
 

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Player, EquipmentSlot, Item, SkillType, PlayerSettings } from '../types';
+import { Player, EquipmentSlot, Item, SkillType, PlayerSettings, Vocation } from '../types';
 import { SHOP_ITEMS, MAX_STAMINA, EMPTY_SLOT_IMAGES } from '../constants';
 import { Shield, Backpack, User, EyeOff, Trash2, Sun } from 'lucide-react';
 import { ItemTooltip } from './ItemTooltip';
@@ -121,6 +121,18 @@ export const CharacterPanel: React.FC<CharacterPanelProps> = ({ player, onUpdate
   };
 
   const isSkipped = (itemId: string) => player.skippedLoot.includes(itemId);
+
+  const getVocationName = () => {
+      if (!player.promoted) return player.vocation;
+      switch(player.vocation) {
+          case Vocation.KNIGHT: return 'Elite Knight';
+          case Vocation.PALADIN: return 'Royal Paladin';
+          case Vocation.SORCERER: return 'Master Sorcerer';
+          case Vocation.DRUID: return 'Elder Druid';
+          case Vocation.MONK: return 'Master Monk';
+          default: return player.vocation;
+      }
+  };
   
   return (
     <div className="flex flex-col h-full select-none" onClick={() => { setSelectedInventoryItem(null); setMenuPosition(null); }}>
@@ -175,7 +187,7 @@ export const CharacterPanel: React.FC<CharacterPanelProps> = ({ player, onUpdate
                     </div>
                 )}
             </div>
-            <span className="text-xs text-[#aaa]">{player.vocation}</span>
+            <span className="text-xs text-[#aaa]">{getVocationName()}</span>
          </div>
 
          <div className="space-y-3 px-1 mb-2">

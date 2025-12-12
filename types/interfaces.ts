@@ -72,9 +72,18 @@ export interface Quest {
   id: string;
   name: string;
   description: string;
-  targetMonsterId: string;
-  requiredKills: number;
-  rewardNpcAccess: NpcType;
+  
+  // Requirement
+  targetMonsterId?: string;
+  requiredKills?: number;
+  requiredLevel?: number;
+  requiredItems?: { [itemId: string]: number }; // e.g. Gather 5 Wolf Paws
+
+  // Reward
+  rewardNpcAccess?: NpcType;
+  rewardItems?: { itemId: string, count: number }[];
+  rewardGold?: number;
+  rewardExp?: number;
 }
 
 export interface HuntingTask {
@@ -99,11 +108,22 @@ export interface PlayerSettings {
   selectedRuneId: string;
 }
 
+export type PreyBonusType = 'xp' | 'damage' | 'defense' | 'loot';
+
+export interface PreySlot {
+    monsterId: string | null;
+    bonusType: PreyBonusType;
+    bonusValue: number; // Percentage (e.g. 40 for 40%)
+}
+
+export type AscensionPerk = 'gold_boost' | 'damage_boost' | 'loot_boost' | 'boss_cd' | 'soul_gain';
+
 export interface Player {
   name: string;
   isGm?: boolean; // GM Flag
   level: number;
   vocation: Vocation;
+  promoted: boolean; // Promotion Flag
   currentXp: number;
   maxXp: number;
   hp: number;
@@ -116,6 +136,7 @@ export interface Player {
   lastSaveTime: number;
   activeHuntId: string | null;
   activeHuntCount: number;
+  activeHuntStartTime: number; // New: Tracks when the hunt started
   activeTrainingSkill: SkillType | null;
   equipment: {
     [key in EquipmentSlot]?: Item;
@@ -132,8 +153,9 @@ export interface Player {
   settings: PlayerSettings;
   quests: {
     [questId: string]: {
-      kills: number;
-      completed: boolean;
+      kills: number; // Tracks kills for this quest
+      itemsHandedIn?: boolean; // If item requirements met
+      completed: boolean; // If reward claimed
     }
   };
   bossCooldowns: {
@@ -148,6 +170,18 @@ export interface Player {
   taskOptions: HuntingTask[];
   skippedLoot: string[];
   hasBlessing: boolean;
+  
+  // PREY SYSTEM
+  prey: {
+      slots: PreySlot[];
+      nextFreeReroll: number; // Timestamp
+  };
+
+  // ASCENSION SYSTEM
+  soulPoints: number;
+  ascension: {
+      [key in AscensionPerk]: number; // Level of the perk
+  };
 }
 
 export interface LogEntry {

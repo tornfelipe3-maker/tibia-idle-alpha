@@ -17,7 +17,10 @@ import { BotPanel } from './components/BotPanel';
 import { AuthScreen } from './components/AuthScreen';
 import { HighscoresModal } from './components/HighscoresModal';
 import { GmPanel } from './components/GmPanel';
-import { Crown, Save, LogOut, Swords, Skull, Shield, ShoppingBag, Sparkles, Landmark, Package, Map, Bot, Download, Trophy } from 'lucide-react';
+import { CastlePanel } from './components/CastlePanel';
+import { PreyPanel } from './components/PreyPanel';
+import { AscensionPanel } from './components/AscensionPanel';
+import { Crown, Save, LogOut, Swords, Skull, Shield, ShoppingBag, Sparkles, Landmark, Package, Map, Bot, Download, Trophy, Castle, Target, Ghost } from 'lucide-react';
 
 // Custom Hooks
 import { useAuth } from './hooks/useAuth';
@@ -43,7 +46,7 @@ export default function App() {
   // --- UI State ---
   const [showHighscores, setShowHighscores] = useState(false);
   const [highscoresData, setHighscoresData] = useState<HighscoresData | null>(null);
-  const [activeTab, setActiveTab] = useState<'hunt' | 'tasks' | 'quests' | 'train' | 'shop' | 'spells' | 'bank' | 'depot' | 'bot'>('hunt');
+  const [activeTab, setActiveTab] = useState<'hunt' | 'tasks' | 'quests' | 'train' | 'shop' | 'spells' | 'bank' | 'depot' | 'bot' | 'castle' | 'prey' | 'ascension'>('hunt');
   const [showVocationModal, setShowVocationModal] = useState(false);
   const [showNameModal, setShowNameModal] = useState(false);
   const [tempName, setTempName] = useState('');
@@ -222,18 +225,21 @@ export default function App() {
             <div className="w-24 bg-[#181818] border-r border-[#333] flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
                 <div className="px-3 py-2 text-[10px] text-[#555] font-bold uppercase mt-2">Adventure</div>
                 <NavButton id="hunt" label="Battle" icon={Swords} active={activeTab === 'hunt'} />
+                <NavButton id="prey" label="Prey" icon={Target} active={activeTab === 'prey'} />
                 <NavButton id="tasks" label="Tasks" icon={Skull} active={activeTab === 'tasks'} />
                 <NavButton id="quests" label="Quests" icon={Map} active={activeTab === 'quests'} />
                 <NavButton id="train" label="Arena" icon={Shield} active={activeTab === 'train'} />
                 <div className="w-full h-[1px] bg-[#333] my-2"></div>
                 <div className="px-3 py-2 text-[10px] text-[#555] font-bold uppercase">City</div>
                 <NavButton id="shop" label="Shop" icon={ShoppingBag} active={activeTab === 'shop'} />
+                <NavButton id="castle" label="Castle" icon={Castle} active={activeTab === 'castle'} />
                 <NavButton id="spells" label="Spells" icon={Sparkles} active={activeTab === 'spells'} />
                 <NavButton id="bank" label="Bank" icon={Landmark} active={activeTab === 'bank'} />
                 <NavButton id="depot" label="Depot" icon={Package} active={activeTab === 'depot'} />
                 <div className="w-full h-[1px] bg-[#333] my-2"></div>
                 <div className="px-3 py-2 text-[10px] text-[#555] font-bold uppercase">System</div>
                 <NavButton id="bot" label="Bot" icon={Bot} active={activeTab === 'bot'} />
+                <NavButton id="ascension" label="Soul War" icon={Ghost} active={activeTab === 'ascension'} />
             </div>
 
             {/* 2. CENTER CONTENT */}
@@ -251,13 +257,16 @@ export default function App() {
                             hits={hits}
                             />
                         )}
+                        {activeTab === 'prey' && <PreyPanel player={player} onReroll={actions.rerollPrey} />}
+                        {activeTab === 'ascension' && <AscensionPanel player={player} onAscend={actions.handleAscend} onUpgrade={actions.handleBuyAscensionUpgrade} />}
                         {activeTab === 'tasks' && <TaskPanel player={player} onSelectTask={actions.handleSelectTask} onCancelTask={actions.handleCancelTask} onRerollTasks={actions.handleRerollTasks} onClaimReward={actions.handleClaimReward}/>}
                         {activeTab === 'train' && <TrainingPanel player={player} isTraining={!!activeTrainingSkill} trainingSkill={activeTrainingSkill} onStartTraining={actions.startTraining} onStopTraining={actions.stopTraining}/>}
                         {activeTab === 'shop' && <ShopPanel playerGold={player.gold} playerLevel={player.level} playerEquipment={player.equipment} playerInventory={player.inventory} playerQuests={player.quests} skippedLoot={player.skippedLoot} playerHasBlessing={player.hasBlessing} isGm={player.isGm} onBuyItem={actions.buyItem} onSellItem={actions.sellItem} onToggleSkippedLoot={actions.handleToggleSkippedLoot} onBuyBlessing={actions.handleBuyBlessing}/>}
+                        {activeTab === 'castle' && <CastlePanel player={player} onPromote={actions.promotePlayer} onBuyBlessing={actions.handleBuyBlessing} />}
                         {activeTab === 'spells' && <SpellPanel player={player} onBuySpell={actions.handleBuySpell}/>}
                         {activeTab === 'depot' && <DepotPanel playerDepot={player.depot} onWithdrawItem={actions.handleWithdrawItem}/>}
                         {activeTab === 'bank' && <BankPanel playerGold={player.gold} bankGold={player.bankGold} onDeposit={actions.handleDepositGold} onWithdraw={actions.handleWithdrawGold}/>}
-                        {activeTab === 'quests' && <QuestPanel playerQuests={player.quests} />}
+                        {activeTab === 'quests' && <QuestPanel playerQuests={player.quests} onClaimQuest={actions.handleClaimQuestReward} playerLevel={player.level} />}
                         {activeTab === 'bot' && <BotPanel player={player} onUpdateSettings={actions.updateSettings} />}
                     </div>
                 </div>
